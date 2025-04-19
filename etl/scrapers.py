@@ -3,22 +3,19 @@ import json
 import re
 import asyncio
 from datetime import date
-from pathlib import Path
-
 import pandas as pd
 import requests
-from bs4 import BeautifulSoup
-import nest_asyncio; nest_asyncio.apply()  # evita error de event‑loop
+from requests.exceptions import JSONDecodeError
+import nest_asyncio; nest_asyncio.apply()
 
 from playwright.async_api import async_playwright
 
-# ──────────────── SOLO ASCII EN ESTAS CABECERAS ─────────────────
+# Cabeceras ASCII-only
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (price-index-bot 1.0)",
     "Accept":     "application/json; charset=UTF-8"
 }
 
-# ---------- util de división -------------------------------------------------------
 def map_division(raw):
     raw = str(raw).lower()
     if "lácte" in raw or "leche" in raw:
@@ -27,22 +24,15 @@ def map_division(raw):
         return "Alimentos y bebidas no alcohólicas"
     return "Otros bienes"
 
-# ---------- helper genérico --------------------------------------------------------
 async def fetch_json(page, pattern: str):
-    """
-    Escucha respuestas cuyo URL coincida con `pattern` y devuélvelas como JSON.
-    """
     result = {}
-
     async def _capture(resp):
         if re.search(pattern, resp.url) and "application/json" in resp.headers.get("content-type", ""):
             result["payload"] = await resp.json()
-
     page.on("response", _capture)
-    await page.wait_for_timeout(5000)  # deja cargar peticiones
+    await page.wait_for_timeout(5000)
     return result.get("payload", {})
 
-# ---------- Coto (GraphQL) ----------------------------------------------------------
 async def coto_df():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -64,27 +54,47 @@ async def coto_df():
         })
     return pd.DataFrame(rows)
 
-# ---------- La Anónima -------------------------------------------------------------
 def laanonima_df():
     url = (
         "https://supermercado.laanonimaonline.com/api/catalog_system/"
         "pub/products/search?fq=C:1101&_from=0&_to=49"
     )
-    data = requests.get(url, headers=HEADERS, timeout=30).json()
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=30)
+    except Exception as e:
+        print(f"[WARN] La Anónima: error HTTP: {e}")
+        return pd.DataFrame(columns=[
+            "date","store","sku","name","price","division","province"
+        ])
+
+    if not resp.ok or "application/json" not in resp.headers.get("content-type", ""):
+        print(f"[WARN] La Anónima: respuesta no-JSON o status {resp.status_code}")
+        return pd.DataFrame(columns=[
+            "date","store","sku","name","price","division","province"
+        ])
+
+    try:
+        data = resp.json()
+    except JSONDecodeError as e:
+        print(f"[WARN] La Anónima: JSONDecodeError: {e}")
+        return pd.DataFrame(columns=[
+            "date","store","sku","name","price","division","province"
+        ])
+
     rows = []
     for p in data:
         rows.append({
             "date":     date.today(),
             "store":    "La Anónima",
-            "sku":      p["productId"],
-            "name":     p["productName"],
-            "price":    p["items"][0]["sellers"][0]["commertialOffer"]["Price"],
-            "division": map_division(p["categories"][0]),
+            "sku":      p.get("productId"),
+            "name":     p.get("productName"),
+            "price":    p.get("items", [{}])[0].get("sellers", [{}])[0]
+                            .get("commertialOffer", {}).get("Price"),
+            "division": map_division(p.get("categories", [""])[0]),
             "province": "Nacional"
         })
     return pd.DataFrame(rows)
 
-# ---------- Jumbo -------------------------------------------------------------------
 async def jumbo_df():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -99,13 +109,9 @@ async def jumbo_df():
     df["store"]    = "Jumbo"
     df["division"] = df["mainCategory"].apply(map_division)
     df["province"] = "Nacional"
-    return df[["date", "store", "sku", "name", "price", "division", "province"]]
+    return df[["date","store","sku","name","price","division","province"]]
 
-# ---------- Orquestador -------------------------------------------------------------
 def scrape_all():
-    """
-    Ejecuta todos los scrapers y concatena sus DataFrames.
-    """
     dfs = []
     loop = asyncio.get_event_loop()
     dfs.append(loop.run_until_complete(coto_df()))
