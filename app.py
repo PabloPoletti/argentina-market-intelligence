@@ -1,12 +1,13 @@
-# ───────────────────────────────────────────────────────────────
-#  app.py
-# ───────────────────────────────────────────────────────────────
+# app.py
+
 import subprocess
 import pathlib
+
 import nest_asyncio
 import streamlit as st           # ← import de Streamlit
+nest_asyncio.apply()            # re‑usa el event‑loop
 
-# ——— Debe ser la PRIMERA llamada a Streamlit ———
+# ——— PRIMErA llamada a Streamlit ———
 st.set_page_config(
     page_title="Índice diario IPC‑Online 🇦🇷",
     layout="wide",
@@ -16,14 +17,11 @@ import duckdb
 import pandas as pd
 import altair as alt
 
-nest_asyncio.apply()  # re‑usa el event‑loop
-
 # ---------- A)  Garantizar Chromium (Playwright) -------------------------
 def ensure_playwright():
     cache = pathlib.Path.home() / ".cache" / "ms-playwright" / "chromium"
     if cache.exists():
         return
-    # Aquí ya podemos usar st.info porque set_page_config ya se llamó
     st.info("Descargando Chromium… (sólo la primera vez)")
     subprocess.run(["playwright", "install", "chromium"], check=True)
 
@@ -34,20 +32,11 @@ DB_PATH = pathlib.Path("data/prices.duckdb")
 DB_PATH.parent.mkdir(exist_ok=True)
 con = duckdb.connect(str(DB_PATH))
 
-# ◂ Opción 1 (use SHOW TABLES) ───────────────────────────────────────────
-tbls = con.execute("SHOW TABLES").fetchall()  # devuelve [('prices',)]
+# ▸ Si no existe la tabla, la creo y tiro el ETL
+tbls = con.execute("SHOW TABLES").fetchall()
 if ("prices",) not in tbls:
     from etl.indexer import update_all_sources
     update_all_sources(str(DB_PATH))
-
-# ◂ Opción 2 (si prefieres duckdb_tables()) ──────────────────────────────
-# exists = con.execute(
-#     "SELECT 1 FROM duckdb_tables() WHERE table_name='prices'"
-# ).fetchone()
-# if not exists:
-#     from etl.indexer import update_all_sources
-#     update_all_sources(str(DB_PATH))
-# ------------------------------------------------------------------------
 
 # ---------- C)  Streamlit UI --------------------------------------------
 st.title("Índice Diario de Precios al Consumidor (experimental)")
@@ -58,28 +47,21 @@ with st.sidebar:
         update_all_sources(str(DB_PATH))
         st.success("¡Datos actualizados!")
 
-    provincia = st.selectbox(
-        "Provincia / Región",
-        ["Nacional", "GBA", "Pampeana", "Noreste", "Noroeste", "Cuyo", "Patagonia"],
-    )
-
 # ─────────────────────────────────────────────────────────────────────────
 #   Carga de datos y cálculos
 # ─────────────────────────────────────────────────────────────────────────
 from etl.indexer import compute_indices
 
+# 1) Cargo todo el histórico de precios (sin filtrar por province)
 raw = con.execute("SELECT * FROM prices").fetch_df()
-raw = raw[
-    (raw["province"] == provincia)
-    | (raw["province"] == "Nacional")
-]
 
-idx = compute_indices(raw, weights_path="data/weights.csv")
+# 2) Calculo el índice simple
+idx = compute_indices(raw)
 
 # ─────────────────────────────────────────────────────────────────────────
 #   Gráficos
 # ─────────────────────────────────────────────────────────────────────────
-st.subheader(f"Evolución {provincia}")
+st.subheader("Evolución del índice de precios")
 st.altair_chart(
     alt.Chart(idx)
        .mark_line()
@@ -91,11 +73,12 @@ st.altair_chart(
     use_container_width=True,
 )
 
-st.subheader("Divisiones IPC")
+st.subheader("Divisiones IPC (precio promedio)")
 div_df = (
-    raw.groupby(["division", "date"])
-       .price.mean()
-       .reset_index()
+    raw
+    .groupby(["division", "date"], as_index=False)
+    .price
+    .mean()
 )
 st.altair_chart(
     alt.Chart(div_df)
