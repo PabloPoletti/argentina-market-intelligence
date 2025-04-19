@@ -2,6 +2,7 @@
 
 import requests
 import pandas as pd
+import streamlit as st 
 
 def search_mercadolibre(query: str, limit: int = 50) -> pd.DataFrame | None:
     """
