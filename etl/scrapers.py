@@ -1,108 +1,95 @@
-import json, re, asyncio, pandas as pd
+# ────────────────────  etl/scrapers.py  ─────────────────────────────
+import json, re, asyncio, pandas as pd, requests
+from bs4 import BeautifulSoup
 from datetime import date
+from pathlib import Path
+import nest_asyncio; nest_asyncio.apply()            # ← evita error de event‑loop
+
 from playwright.async_api import async_playwright
 
-HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; price‑index‑bot/1.0)"}
+HEADERS = {"User-Agent": "Mozilla/5.0 (price‑index‑bot 1.0)"}
 
-# ---------- helpers ----------------------------------------------------------
+# ---------- util de división -------------------------------------------------------
+def map_division(raw):
+    raw = str(raw).lower()
+    if "lácte" in raw or "leche" in raw:
+        return "Leche, lácteos y huevos"
+    if "despensa" in raw or "alimento" in raw:
+        return "Alimentos y bebidas no alcohólicas"
+    return "Otros bienes"
 
-async def fetch_json(page, url, pattern):
-    """Intercepta la respuesta JSON que contiene precios"""
+# ---------- helper genérico --------------------------------------------------------
+async def fetch_json(page, pattern: str):
     result = {}
-    async def handle(route, request):
-        await route.continue_()
-    page.on("response", lambda r: _capture(r, pattern, result))
-    await page.route("**/*", handle)
-    await page.goto(url, timeout=60000)
-    return result["payload"]
+    async def _capture(resp):
+        if re.search(pattern, resp.url) and "application/json" in resp.headers.get("content-type", ""):
+            result["payload"] = await resp.json()
+    page.on("response", _capture)
+    await page.wait_for_timeout(5000)                # deja cargar peticiones
+    return result.get("payload", {})
 
-def _capture(resp, pattern, result):
-    if re.search(pattern, resp.url) and "application/json" in resp.headers.get("content-type", ""):
-        result["payload"] = asyncio.run(resp.json())
-
-# ---------- COTO (GraphQL) ---------------------------------------------------
-
+# ---------- Coto (GraphQL) ----------------------------------------------------------
 async def coto_df():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
-        # el endpoint GraphQL se llama 'getProductsByCategory'
-        payload = await fetch_json(page,
-                                   "https://www.cotodigital3.com.ar/sitios/cdigi/",
-                                   r"graphql.*getProductsByCategory")
+        await page.goto("https://www.cotodigital3.com.ar/sitios/cdigi/", timeout=60000)
+        payload = await fetch_json(page, r"graphql.*getProductsByCategory")
         await browser.close()
 
     rows = []
-    for p in payload["data"]["products"]:
+    for prod in payload.get("data", {}).get("products", []):
         rows.append({
             "date": date.today(),
             "store": "Coto",
-            "sku": p["sku"],
-            "name": p["name"],
-            "price": p["price"],
-            "division": map_division(p["category"]),
-            "province": "Nacional"          # Coto no publica sucursal vía web
+            "sku": prod["sku"],
+            "name": prod["name"],
+            "price": prod["price"],
+            "division": map_division(prod["category"]),
+            "province": "Nacional"
         })
     return pd.DataFrame(rows)
 
-# ---------- La Anónima (API REST) -------------------------------------------
-
+# ---------- La Anónima -------------------------------------------------------------
 def laanonima_df():
-    url = "https://supermercado.laanonimaonline.com/api/catalog_system/pub/products/search?fq=C:1101&_from=0&_to=49"
+    url = ("https://supermercado.laanonimaonline.com/api/catalog_system/"
+           "pub/products/search?fq=C:1101&_from=0&_to=49")
     data = requests.get(url, headers=HEADERS, timeout=30).json()
-    rows = [{
-        "date": date.today(),
-        "store": "La Anónima",
-        "sku": p["productId"],
-        "name": p["productName"],
-        "price": p["items"][0]["sellers"][0]["commertialOffer"]["Price"],
-        "division": map_division(p["categories"][0]),
-        "province": p.get("store", "Nacional")
-    } for p in data]
+    rows = []
+    for p in data:
+        rows.append({
+            "date": date.today(),
+            "store": "La Anónima",
+            "sku": p["productId"],
+            "name": p["productName"],
+            "price": p["items"][0]["sellers"][0]["commertialOffer"]["Price"],
+            "division": map_division(p["categories"][0]),
+            "province": "Nacional"
+        })
     return pd.DataFrame(rows)
 
-# ---------- Jumbo (Vue SSR) --------------------------------------------------
-
+# ---------- Jumbo -------------------------------------------------------------------
 async def jumbo_df():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
         await page.goto("https://www.jumbo.com.ar/despensa", timeout=60000)
-        products = await page.eval_on_selector_all("script#__NUXT_DATA__", "elements => elements.map(e => e.innerText)")
-        # el JSON está embebido en el script Nuxt
-        parsed = json.loads(products[0])[0]["state"]["products"]
+        nuxt_json = await page.eval_on_selector("script#__NUXT_DATA__", "el => el.innerText")
         await browser.close()
-
-    df = pd.json_normalize(parsed)
+    products = json.loads(nuxt_json)[0]["state"]["products"]
+    df = pd.json_normalize(products)
     df["date"] = date.today()
     df["store"] = "Jumbo"
     df["division"] = df["mainCategory"].apply(map_division)
     df["province"] = "Nacional"
     return df[["date", "store", "sku", "name", "price", "division", "province"]]
 
-# ---------- MercadoLibre histórico (MercadoTrack) ---------------------------
-
-def ml_track_df(ml_id: str):
-    url = f"https://beta.mercadotrack.com/MLA/trackings/{ml_id}"
-    soup = BeautifulSoup(requests.get(url, headers=HEADERS, timeout=30).text, "lxml")
-    history = json.loads(soup.select_one("script#__NEXT_DATA__").string)
-    series = history["props"]["pageProps"]["tracking"]["priceHistory"]
-    return pd.DataFrame({
-        "date": pd.to_datetime([x["at"] for x in series]),
-        "store": "MercadoLibre",
-        "sku": ml_id,
-        "name": history["props"]["pageProps"]["tracking"]["title"],
-        "price": [x["priceAmount"] for x in series],
-        "division": "Otros bienes",
-        "province": "Nacional"
-    })
-
-# ---------- orquestador -----------------------------------------------------
-
+# ---------- Orquestador -------------------------------------------------------------
 def scrape_all():
     dfs = []
-    dfs.append(asyncio.run(coto_df()))
+    loop = asyncio.get_event_loop()
+    dfs.append(loop.run_until_complete(coto_df()))
     dfs.append(laanonima_df())
-    dfs.append(asyncio.run(jumbo_df()))
-    # ← agrega más scrapers siguiendo el patrón
+    dfs.append(loop.run_until_complete(jumbo_df()))
     return pd.concat(dfs, ignore_index=True)
+# ────────────────────────────────────────────────────────────────────
