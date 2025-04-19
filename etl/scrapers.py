@@ -1,13 +1,22 @@
 # ────────────────────  etl/scrapers.py  ─────────────────────────────
-import json, re, asyncio, pandas as pd, requests
-from bs4 import BeautifulSoup
+import json
+import re
+import asyncio
 from datetime import date
 from pathlib import Path
-import nest_asyncio; nest_asyncio.apply()            # ← evita error de event‑loop
+
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+import nest_asyncio; nest_asyncio.apply()  # evita error de event‑loop
 
 from playwright.async_api import async_playwright
 
-HEADERS = {"User-Agent": "Mozilla/5.0 (price‑index‑bot 1.0)"}
+# ──────────────── SOLO ASCII EN ESTAS CABECERAS ─────────────────
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (price-index-bot 1.0)",
+    "Accept":     "application/json; charset=UTF-8"
+}
 
 # ---------- util de división -------------------------------------------------------
 def map_division(raw):
@@ -20,12 +29,17 @@ def map_division(raw):
 
 # ---------- helper genérico --------------------------------------------------------
 async def fetch_json(page, pattern: str):
+    """
+    Escucha respuestas cuyo URL coincida con `pattern` y devuélvelas como JSON.
+    """
     result = {}
+
     async def _capture(resp):
         if re.search(pattern, resp.url) and "application/json" in resp.headers.get("content-type", ""):
             result["payload"] = await resp.json()
+
     page.on("response", _capture)
-    await page.wait_for_timeout(5000)                # deja cargar peticiones
+    await page.wait_for_timeout(5000)  # deja cargar peticiones
     return result.get("payload", {})
 
 # ---------- Coto (GraphQL) ----------------------------------------------------------
@@ -40,11 +54,11 @@ async def coto_df():
     rows = []
     for prod in payload.get("data", {}).get("products", []):
         rows.append({
-            "date": date.today(),
-            "store": "Coto",
-            "sku": prod["sku"],
-            "name": prod["name"],
-            "price": prod["price"],
+            "date":     date.today(),
+            "store":    "Coto",
+            "sku":      prod["sku"],
+            "name":     prod["name"],
+            "price":    prod["price"],
             "division": map_division(prod["category"]),
             "province": "Nacional"
         })
@@ -52,17 +66,19 @@ async def coto_df():
 
 # ---------- La Anónima -------------------------------------------------------------
 def laanonima_df():
-    url = ("https://supermercado.laanonimaonline.com/api/catalog_system/"
-           "pub/products/search?fq=C:1101&_from=0&_to=49")
+    url = (
+        "https://supermercado.laanonimaonline.com/api/catalog_system/"
+        "pub/products/search?fq=C:1101&_from=0&_to=49"
+    )
     data = requests.get(url, headers=HEADERS, timeout=30).json()
     rows = []
     for p in data:
         rows.append({
-            "date": date.today(),
-            "store": "La Anónima",
-            "sku": p["productId"],
-            "name": p["productName"],
-            "price": p["items"][0]["sellers"][0]["commertialOffer"]["Price"],
+            "date":     date.today(),
+            "store":    "La Anónima",
+            "sku":      p["productId"],
+            "name":     p["productName"],
+            "price":    p["items"][0]["sellers"][0]["commertialOffer"]["Price"],
             "division": map_division(p["categories"][0]),
             "province": "Nacional"
         })
@@ -76,20 +92,24 @@ async def jumbo_df():
         await page.goto("https://www.jumbo.com.ar/despensa", timeout=60000)
         nuxt_json = await page.eval_on_selector("script#__NUXT_DATA__", "el => el.innerText")
         await browser.close()
+
     products = json.loads(nuxt_json)[0]["state"]["products"]
     df = pd.json_normalize(products)
-    df["date"] = date.today()
-    df["store"] = "Jumbo"
+    df["date"]     = date.today()
+    df["store"]    = "Jumbo"
     df["division"] = df["mainCategory"].apply(map_division)
     df["province"] = "Nacional"
     return df[["date", "store", "sku", "name", "price", "division", "province"]]
 
 # ---------- Orquestador -------------------------------------------------------------
 def scrape_all():
+    """
+    Ejecuta todos los scrapers y concatena sus DataFrames.
+    """
     dfs = []
     loop = asyncio.get_event_loop()
     dfs.append(loop.run_until_complete(coto_df()))
     dfs.append(laanonima_df())
     dfs.append(loop.run_until_complete(jumbo_df()))
     return pd.concat(dfs, ignore_index=True)
-# ────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────
