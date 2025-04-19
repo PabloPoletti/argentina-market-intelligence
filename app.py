@@ -1,35 +1,46 @@
 # ──────────────────────────────  app.py  ─────────────────────────────
-import subprocess, pathlib, os, asyncio, nest_asyncio
+import subprocess, pathlib, asyncio, nest_asyncio
 import streamlit as st
 import duckdb, pandas as pd, altair as alt
 
-# ---------- A) asegurar Playwright ------------------------------------------------
+nest_asyncio.apply()                       # ← evita colisión de loops
+
+# ---------- A) descarga de navegadores Playwright -------------------
 def ensure_playwright():
-    cache_dir = pathlib.Path.home() / ".cache" / "ms-playwright"
-    if not cache_dir.exists():                       # solo la 1.ª vez
-        st.info("Descargando navegadores Playwright… (≈30 s)")
+    """Descarga Chromium si falta, sin usar --with-deps (requiere sudo)."""
+    cache_dir = pathlib.Path.home() / ".cache" / "ms-playwright" / "chromium"
+    if cache_dir.exists():        # ya está descargado
+        return
+    st.info("Descargando Chromium (Playwright)… primera vez ≈30 s")
+    try:
         subprocess.run(
-            ["playwright", "install", "chromium", "--with-deps"],
+            ["playwright", "install", "chromium"],      # sin --with-deps
             check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
         )
-ensure_playwright()                                  # se ejecuta antes de usar scrapers
+    except subprocess.CalledProcessError as e:
+        # Mostramos aviso pero dejamos seguir: si falla aquí fallará el scraper
+        st.error("No se pudo descargar Chromium. Reintenta el deploy o "
+                 "revisa tu archivo packages.txt.")
+        raise
 
-# ---------- B) base de datos DuckDB ------------------------------------------------
+ensure_playwright()                      # se ejecuta antes de usar los scrapers
+
+# ---------- B) base de datos DuckDB ---------------------------------
 DB_PATH = pathlib.Path("data/prices.duckdb")
-DB_PATH.parent.mkdir(exist_ok=True)                  # crea /data si falta
-con = duckdb.connect(str(DB_PATH))                   # sin read_only=True
+DB_PATH.parent.mkdir(exist_ok=True)
+con = duckdb.connect(str(DB_PATH))
 
-# si la base está vacía la rellenamos en caliente
+# crea la tabla la primera vez
 if not DB_PATH.exists() or not con.execute(
         "SELECT * FROM duckdb_tables() WHERE name='prices'").fetchall():
     from etl.indexer import update_all_sources
     update_all_sources(str(DB_PATH))
 
-# ---------- C) configuración de la página ------------------------------------------
+# ---------- C) configuración de la página ---------------------------
 st.set_page_config(page_title="Índice diario IPC‑Online 🇦🇷", layout="wide")
-st.title("Índice Diario de Precios al Consumidor (experimental)")
+st.title("Índice Diario de Precios al Consumidor (experimental)")
 
-# ---------- D) barra lateral -------------------------------------------------------
+# ---------- D) barra lateral ----------------------------------------
 with st.sidebar:
     st.subheader("Controles")
     if st.button("Actualizar precios ahora"):
@@ -42,32 +53,29 @@ with st.sidebar:
         ["Nacional", "GBA", "Pampeana", "Noreste", "Noroeste", "Cuyo", "Patagonia"]
     )
 
-# ---------- E) consulta + cálculo del índice --------------------------------------
+# ---------- E) datos + índice ---------------------------------------
 from etl.indexer import compute_indices
 raw = con.execute("SELECT * FROM prices").fetch_df()
 raw = raw[(raw["province"] == provincia) | (raw["province"] == "Nacional")]
 
 idx = compute_indices(raw)
 
-# ---------- F) visualización -------------------------------------------------------
+# ---------- F) visualización ----------------------------------------
 st.subheader(f"Evolución {provincia}")
-line = (
+st.altair_chart(
     alt.Chart(idx).mark_line().encode(
-        x="date:T", y="index:Q",
-        tooltip=["date:T", "index:Q"]
-    )
+        x="date:T", y="index:Q", tooltip=["date:T", "index:Q"]
+    ),
+    use_container_width=True
 )
-st.altair_chart(line, use_container_width=True)
 
 st.subheader("Divisiones IPC")
-divisiones = (
-    raw.groupby(["division", "date"]).price.mean().reset_index()
-)
-chart = (
-    alt.Chart(divisiones).mark_line().encode(
+div_df = raw.groupby(["division", "date"]).price.mean().reset_index()
+st.altair_chart(
+    alt.Chart(div_df).mark_line().encode(
         x="date:T", y="price:Q", color="division:N",
         tooltip=["division:N", "price:Q", "date:T"]
-    )
+    ),
+    use_container_width=True
 )
-st.altair_chart(chart, use_container_width=True)
 # ────────────────────────────────────────────────────────────────────
