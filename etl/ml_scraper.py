@@ -1,66 +1,48 @@
 # etl/ml_scraper.py
 
 import requests
-import pandas as pd
-import streamlit as st 
+from bs4 import BeautifulSoup
+import numpy as np
 
-def search_mercadolibre(query: str, limit: int = 50) -> pd.DataFrame | None:
+def ml_price_stats(query: str, limit: int = 20):
     """
-    Busca productos en Mercado Libre utilizando su API pública de búsqueda.
-    Args:
-        query: término a buscar.
-        limit: máximo de resultados por página (50 máximo).
-    Returns:
-        DataFrame con todos los resultados agregados o None si falla.
+    Devuelve un dict con avg_price, min_price y max_price para la búsqueda 'query'
+    en MercadoLibre, extrayendo precios de la página HTML.
     """
-    all_items = []
-    offset = 0
-
-    while True:
-        url = "https://api.mercadolibre.com/sites/MLA/search"
-        params = {"q": query, "limit": limit, "offset": offset}
+    # Cabeceras para simular un navegador real
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+        )
+    }
+    # Construimos la URL pública de búsqueda
+    safe_query = query.replace(" ", "-")
+    url = f"https://listado.mercadolibre.com.ar/{safe_query}"
+    
+    resp = requests.get(url, headers=headers, timeout=15)
+    resp.raise_for_status()
+    
+    soup = BeautifulSoup(resp.text, "html.parser")
+    
+    # Seleccionamos las fracciones de precio visibles en los resultados
+    price_tags = soup.select(
+        "li.ui-search-layout__item .ui-search-price__second-line .price-tag-fraction"
+    )
+    prices = []
+    for tag in price_tags[:limit]:
+        text = tag.get_text().strip().replace(".", "")
         try:
-            r = requests.get(url, params=params, timeout=10)
-            r.raise_for_status()
-            data = r.json()
-            results = data.get("results", [])
-            if not results:
-                break
-            all_items.extend(results)
-            offset += limit
-        except requests.RequestException as e:
-            st.warning(f"Error con ML API para '{query}': {e}")
-            return None
-
-    if not all_items:
+            prices.append(float(text))
+        except ValueError:
+            continue
+    
+    if not prices:
         return None
-
-    return pd.DataFrame(all_items)
-
-def remove_outliers(df: pd.DataFrame, price_col: str = "price") -> pd.DataFrame:
-    """
-    Elimina outliers de la columna de precio usando quantiles (10%–90%).
-    """
-    df = df.copy()
-    df[price_col] = pd.to_numeric(df[price_col], errors="coerce")
-    df = df.dropna(subset=[price_col])
-    q10, q90 = df[price_col].quantile(0.10), df[price_col].quantile(0.90)
-    return df[(df[price_col] >= q10) & (df[price_col] <= q90)]
-
-def ml_price_stats(query: str) -> dict[str, float] | None:
-    """
-    Devuelve estadísticas de precio para una búsqueda en ML:
-      - avg_price: precio promedio tras limpieza de outliers
-      - min_price, max_price
-    """
-    df = search_mercadolibre(query)
-    if df is None or df.empty:
-        return None
-    df_clean = remove_outliers(df, "price")
-    if df_clean.empty:
-        return None
+    
+    arr = np.array(prices, dtype=float)
     return {
-        "avg_price": df_clean["price"].mean(),
-        "min_price": df_clean["price"].min(),
-        "max_price": df_clean["price"].max(),
+        "avg_price": float(arr.mean()),
+        "min_price": float(arr.min()),
+        "max_price": float(arr.max()),
     }
