@@ -1,8 +1,12 @@
-import duckdb, pandas as pd
+# etl/indexer.py
+
+import duckdb
+import pandas as pd
 
 def update_all_sources(db_path="data/prices.duckdb"):
     from .scrapers import scrape_all
     from .transform import clean
+
     df = clean(scrape_all())
 
     con = duckdb.connect(db_path)
@@ -19,14 +23,26 @@ def update_all_sources(db_path="data/prices.duckdb"):
     """)
     con.execute("INSERT INTO prices SELECT * FROM df")
 
-def compute_indices(df: pd.DataFrame, weights_path="weights.csv"):
-    """Laspeyres encadenado base Dic‑24=100"""
-    w = pd.read_csv(weights_path)
-    merged = df.merge(w, on=["division", "province"], how="left")
-    basket = (merged.groupby(["division", "province"])
-                     .apply(lambda x: (x["price"] * x["weight"]).sum()))
-    basket = basket.groupby(level=[1]).sum()  # índice provincial
-    base = basket.loc[basket.index.min()]     # dic‑24
-    idx = (basket / base * 100).reset_index()
-    idx.rename(columns={0: "index"}, inplace=True)
-    return idx
+
+def compute_indices(df: pd.DataFrame, weights_path=None):
+    """
+    Índice de precios simple:
+      index_t = (precio_promedio_t / precio_promedio_base) * 100
+    """
+    # 1) Agrupo por fecha y calcúlo precio promedio
+    daily = (
+        df
+        .groupby("date", as_index=False)
+        .price
+        .mean()
+        .rename(columns={"price": "avg_price"})
+    )
+
+    # 2) Tomo como base el primer día
+    base = daily.loc[0, "avg_price"]
+
+    # 3) Calculo el índice
+    daily["index"] = daily["avg_price"] / base * 100
+
+    # 4) Devuelvo solo fecha + índice
+    return daily[["date", "index"]]
