@@ -7,4 +7,5 @@ libgtk-3-0
 libxcomposite1
 libxdamage1
 libxrandr2
+libasound2
 
