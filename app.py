@@ -60,7 +60,7 @@ raw = raw[
     (raw["province"] == provincia)
     | (raw["province"] == "Nacional")
 ]
-idx = compute_indices(raw, weights_path="data/weights.csv")
+idx = compute_indices(raw)
 
 st.subheader(f"Evolución {provincia}")
 st.altair_chart(
