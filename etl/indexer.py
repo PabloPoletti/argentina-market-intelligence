@@ -1,48 +1,22 @@
-# etl/indexer.py
-
-import duckdb
 import pandas as pd
 
-def update_all_sources(db_path="data/prices.duckdb"):
-    from .scrapers import scrape_all
-    from .transform import clean
-
-    df = clean(scrape_all())
-
-    con = duckdb.connect(db_path)
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS prices (
-            date        DATE,
-            store       VARCHAR,
-            sku         VARCHAR,
-            name        VARCHAR,
-            price       DOUBLE,
-            division    VARCHAR,
-            province    VARCHAR
-        )
-    """)
-    con.execute("INSERT INTO prices SELECT * FROM df")
-
-
-def compute_indices(df: pd.DataFrame, weights_path=None):
+def compute_indices(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Índice de precios simple:
-      index_t = (precio_promedio_t / precio_promedio_base) * 100
+    Calcula un índice encadenado simple (base = primer día) a partir
+    del precio promedio diario de todos los artículos.
     """
-    # 1) Agrupo por fecha y calcúlo precio promedio
+    # 1) Calcular precio promedio por día
     daily = (
-        df
-        .groupby("date", as_index=False)
-        .price
-        .mean()
-        .rename(columns={"price": "avg_price"})
+        df.groupby("date")
+          .price.mean()
+          .reset_index(name="avg_price")
+          .sort_values("date")
     )
 
-    # 2) Tomo como base el primer día
-    base = daily.loc[0, "avg_price"]
+    # 2) Tomar como base el primer día (posición 0 tras el reset_index)
+    base = daily["avg_price"].iloc[0]
 
-    # 3) Calculo el índice
+    # 3) Calcular el índice (base = 100)
     daily["index"] = daily["avg_price"] / base * 100
 
-    # 4) Devuelvo solo fecha + índice
-    return daily[["date", "index"]]
+    return daily
