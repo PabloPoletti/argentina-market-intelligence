@@ -63,23 +63,17 @@ def laanonima_df():
         resp = requests.get(url, headers=HEADERS, timeout=30)
     except Exception as e:
         print(f"[WARN] La Anónima: error HTTP: {e}")
-        return pd.DataFrame(columns=[
-            "date","store","sku","name","price","division","province"
-        ])
+        return pd.DataFrame(columns=["date","store","sku","name","price","division","province"])
 
     if not resp.ok or "application/json" not in resp.headers.get("content-type", ""):
         print(f"[WARN] La Anónima: respuesta no-JSON o status {resp.status_code}")
-        return pd.DataFrame(columns=[
-            "date","store","sku","name","price","division","province"
-        ])
+        return pd.DataFrame(columns=["date","store","sku","name","price","division","province"])
 
     try:
         data = resp.json()
     except JSONDecodeError as e:
         print(f"[WARN] La Anónima: JSONDecodeError: {e}")
-        return pd.DataFrame(columns=[
-            "date","store","sku","name","price","division","province"
-        ])
+        return pd.DataFrame(columns=["date","store","sku","name","price","division","province"])
 
     rows = []
     for p in data:
@@ -96,20 +90,32 @@ def laanonima_df():
     return pd.DataFrame(rows)
 
 async def jumbo_df():
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
-        await page.goto("https://www.jumbo.com.ar/despensa", timeout=60000)
-        nuxt_json = await page.eval_on_selector("script#__NUXT_DATA__", "el => el.innerText")
-        await browser.close()
+    cols = ["date","store","sku","name","price","division","province"]
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.goto("https://www.jumbo.com.ar/despensa", timeout=60000)
+            # Intentamos capturar el script con estado
+            elem = await page.query_selector("script#__NUXT_DATA__")
+            if not elem:
+                print("[WARN] Jumbo: no se encontró <script id='__NUXT_DATA__'>")
+                await browser.close()
+                return pd.DataFrame(columns=cols)
+            nuxt_json = await elem.inner_text()
+            await browser.close()
 
-    products = json.loads(nuxt_json)[0]["state"]["products"]
-    df = pd.json_normalize(products)
-    df["date"]     = date.today()
-    df["store"]    = "Jumbo"
-    df["division"] = df["mainCategory"].apply(map_division)
-    df["province"] = "Nacional"
-    return df[["date","store","sku","name","price","division","province"]]
+        obj = json.loads(nuxt_json)
+        products = obj[0]["state"]["products"]
+        df = pd.json_normalize(products)
+        df["date"]     = date.today()
+        df["store"]    = "Jumbo"
+        df["division"] = df["mainCategory"].apply(map_division)
+        df["province"] = "Nacional"
+        return df[cols]
+    except Exception as e:
+        print(f"[WARN] Jumbo: error scraping: {e}")
+        return pd.DataFrame(columns=cols)
 
 def scrape_all():
     dfs = []
