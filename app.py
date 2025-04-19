@@ -1,21 +1,23 @@
-# app.py
-
+# ───────────────────────────────────────────────────────────────
+#  app.py
+# ───────────────────────────────────────────────────────────────
 import subprocess
 import pathlib
-
 import nest_asyncio
-import streamlit as st           # ← import de Streamlit
-nest_asyncio.apply()            # re‑usa el event‑loop
+import streamlit as st
 
-# ——— PRIMErA llamada a Streamlit ———
+# Debe ser la PRIMERA llamada a Streamlit
 st.set_page_config(
-    page_title="Índice diario IPC‑Online 🇦🇷",
+    page_title="Índice Diario IPC‑Online 🇦🇷",
     layout="wide",
 )
 
 import duckdb
 import pandas as pd
 import altair as alt
+
+# Reusar event-loop en entornos asíncronos
+nest_asyncio.apply()
 
 # ---------- A)  Garantizar Chromium (Playwright) -------------------------
 def ensure_playwright():
@@ -32,7 +34,7 @@ DB_PATH = pathlib.Path("data/prices.duckdb")
 DB_PATH.parent.mkdir(exist_ok=True)
 con = duckdb.connect(str(DB_PATH))
 
-# ▸ Si no existe la tabla, la creo y tiro el ETL
+# Si no existe tabla, ejecutar primer ETL
 tbls = con.execute("SHOW TABLES").fetchall()
 if ("prices",) not in tbls:
     from etl.indexer import update_all_sources
@@ -48,14 +50,12 @@ with st.sidebar:
         st.success("¡Datos actualizados!")
 
 # ─────────────────────────────────────────────────────────────────────────
-#   Carga de datos y cálculos
+#   Carga de datos y cálculo de índice global simple
 # ─────────────────────────────────────────────────────────────────────────
 from etl.indexer import compute_indices
 
-# 1) Cargo todo el histórico de precios (sin filtrar por province)
 raw = con.execute("SELECT * FROM prices").fetch_df()
-
-# 2) Calculo el índice simple
+# Eliminamos diferenciación provincial: usamos todos los datos
 idx = compute_indices(raw)
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -68,26 +68,19 @@ st.altair_chart(
        .encode(
            x="date:T",
            y="index:Q",
-           tooltip=["date:T", "index:Q"],
+           tooltip=["date:T", "avg_price:Q", "index:Q"],
        ),
     use_container_width=True,
 )
 
-st.subheader("Divisiones IPC (precio promedio)")
-div_df = (
-    raw
-    .groupby(["division", "date"], as_index=False)
-    .price
-    .mean()
-)
+st.subheader("Precio promedio diario")
 st.altair_chart(
-    alt.Chart(div_df)
+    alt.Chart(idx)
        .mark_line()
        .encode(
            x="date:T",
-           y="price:Q",
-           color="division:N",
-           tooltip=["division:N", "price:Q", "date:T"],
+           y="avg_price:Q",
+           tooltip=["date:T", "avg_price:Q"],
        ),
     use_container_width=True,
 )
