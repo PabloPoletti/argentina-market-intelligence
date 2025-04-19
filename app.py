@@ -6,9 +6,9 @@ import pathlib
 import nest_asyncio
 import streamlit as st
 
-# Debe ser la PRIMERA llamada a Streamlit
+# — Debe ser la primera llamada a Streamlit:
 st.set_page_config(
-    page_title="Índice Diario IPC‑Online 🇦🇷",
+    page_title="Índice diario IPC‑Online 🇦🇷",
     layout="wide",
 )
 
@@ -16,10 +16,9 @@ import duckdb
 import pandas as pd
 import altair as alt
 
-# Reusar event-loop en entornos asíncronos
-nest_asyncio.apply()
+nest_asyncio.apply()  # re‑usa el event‑loop
 
-# ---------- A)  Garantizar Chromium (Playwright) -------------------------
+# ---------- A) Garantizar Chromium (Playwright) -------------------------
 def ensure_playwright():
     cache = pathlib.Path.home() / ".cache" / "ms-playwright" / "chromium"
     if cache.exists():
@@ -29,58 +28,60 @@ def ensure_playwright():
 
 ensure_playwright()
 
-# ---------- B)  Base DuckDB ---------------------------------------------
+# ---------- B) Base DuckDB ---------------------------------------------
 DB_PATH = pathlib.Path("data/prices.duckdb")
 DB_PATH.parent.mkdir(exist_ok=True)
 con = duckdb.connect(str(DB_PATH))
 
-# Si no existe tabla, ejecutar primer ETL
+# Si no existe la tabla, la creo y tiro el ETL
 tbls = con.execute("SHOW TABLES").fetchall()
 if ("prices",) not in tbls:
     from etl.indexer import update_all_sources
     update_all_sources(str(DB_PATH))
 
-# ---------- C)  Streamlit UI --------------------------------------------
+# ---------- C) Streamlit UI --------------------------------------------
 st.title("Índice Diario de Precios al Consumidor (experimental)")
 
-with st.sidebar:
-    if st.button("Actualizar precios ahora"):
-        from etl.indexer import update_all_sources
-        update_all_sources(str(DB_PATH))
-        st.success("¡Datos actualizados!")
+if st.sidebar.button("Actualizar precios ahora"):
+    from etl.indexer import update_all_sources
+    update_all_sources(str(DB_PATH))
+    st.success("¡Datos actualizados!")
 
 # ─────────────────────────────────────────────────────────────────────────
-#   Carga de datos y cálculo de índice global simple
+#   Carga de datos y cálculos (sin diferenciación provincial)
 # ─────────────────────────────────────────────────────────────────────────
 from etl.indexer import compute_indices
 
 raw = con.execute("SELECT * FROM prices").fetch_df()
-# Eliminamos diferenciación provincial: usamos todos los datos
+
 idx = compute_indices(raw)
 
-# ─────────────────────────────────────────────────────────────────────────
-#   Gráficos
-# ─────────────────────────────────────────────────────────────────────────
-st.subheader("Evolución del índice de precios")
-st.altair_chart(
-    alt.Chart(idx)
-       .mark_line()
-       .encode(
-           x="date:T",
-           y="index:Q",
-           tooltip=["date:T", "avg_price:Q", "index:Q"],
-       ),
-    use_container_width=True,
-)
+if idx.empty:
+    st.warning("No hay datos suficientes para calcular el índice.")
+else:
+    # ─────────────────────────────────────────────────────────────────────────
+    #   Gráficos
+    # ─────────────────────────────────────────────────────────────────────────
+    st.subheader("Evolución Índice de Precios")
+    st.altair_chart(
+        alt.Chart(idx)
+           .mark_line()
+           .encode(
+               x="date:T",
+               y="index:Q",
+               tooltip=["date:T", "index:Q"],
+           ),
+        use_container_width=True,
+    )
 
-st.subheader("Precio promedio diario")
-st.altair_chart(
-    alt.Chart(idx)
-       .mark_line()
-       .encode(
-           x="date:T",
-           y="avg_price:Q",
-           tooltip=["date:T", "avg_price:Q"],
-       ),
-    use_container_width=True,
-)
+    st.subheader("Precio Medio Diario")
+    st.altair_chart(
+        alt.Chart(idx)
+           .mark_line()
+           .encode(
+               x="date:T",
+               y="avg_price:Q",
+               tooltip=["date:T", "avg_price:Q"],
+           ),
+        use_container_width=True,
+    )
