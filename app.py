@@ -74,7 +74,7 @@ raw = raw[
     | (raw["province"] == "Nacional")
 ]
 
-idx = compute_indices(raw)
+idx = compute_indices(raw, weights_path="data/weights.csv")
 
 # ─────────────────────────────────────────────────────────────────────────
 #   Gráficos
