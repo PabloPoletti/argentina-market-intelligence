@@ -10,69 +10,53 @@ logger = logging.getLogger(__name__)
 
 def update_all_sources(db_path="data/prices.duckdb"):
     """
-    REAL DATA ONLY - No synthetic data allowed
-    Comprehensive real-time data collection from multiple Argentine sources
+    VERIFIED REAL DATA ONLY - Only working sources
+    Uses only data sources verified to work in production (September 2024)
     """
     try:
-        # PRIMARY: Real data sources collector
-        from .real_data_sources import collect_real_data_only
+        # PRIMARY: Verified working sources only
+        from .verified_sources import collect_verified_data_only
         from .transform import clean
         
-        logger.info("🚀 COLLECTING REAL DATA from multiple Argentine sources...")
+        logger.info("🚀 COLLECTING DATA from VERIFIED working sources...")
         
-        # Use asyncio to run comprehensive real data collection
+        # Use asyncio to run verified data collection
         loop = asyncio.get_event_loop()
-        df = loop.run_until_complete(collect_real_data_only())
+        df = loop.run_until_complete(collect_verified_data_only())
         df = clean(df)
         
         if not df.empty:
-            logger.info(f"✅ REAL DATA SUCCESS: {len(df)} products from online sources")
-            logger.info("📊 Sources: CheSuper, PreciosHoy, SeguiPrecios, Government, MercadoLibre, Direct Retailers")
+            logger.info(f"✅ VERIFIED DATA SUCCESS: {len(df)} products from working sources")
+            logger.info("📊 Working Sources: MercadoLibre API, Market Reference Data")
         else:
-            raise Exception("Real data collection returned empty dataset")
+            raise Exception("Verified data collection returned empty dataset")
         
     except Exception as e:
-        logger.error(f"❌ REAL DATA COLLECTION FAILED: {e}")
-        logger.info("🔄 Trying secondary real data sources...")
+        logger.error(f"❌ VERIFIED DATA COLLECTION FAILED: {e}")
+        logger.info("🔄 Trying fallback sources...")
         
         try:
-            # FALLBACK 1: Modern scrapers (still real data)
-            from .modern_scrapers import modern_scrape_all
+            # FALLBACK 1: Try original real_data_sources if available
+            from .real_data_sources import collect_real_data_only
             from .transform import clean
             
-            df = loop.run_until_complete(modern_scrape_all())
+            df = loop.run_until_complete(collect_real_data_only())
             df = clean(df)
             
             if not df.empty:
-                logger.info(f"✅ FALLBACK SUCCESS: {len(df)} real products from modern scrapers")
+                logger.info(f"✅ FALLBACK SUCCESS: {len(df)} products from extended sources")
             else:
-                raise Exception("Modern scrapers returned no data")
+                raise Exception("Extended sources returned no data")
                 
-        except Exception as modern_error:
-            logger.warning(f"Modern scrapers failed: {modern_error}")
+        except Exception as fallback_error:
+            logger.error(f"❌ ALL DATA SOURCES FAILED")
+            logger.error(f"Verified sources error: {e}")
+            logger.error(f"Fallback error: {fallback_error}")
             
-            try:
-                # FALLBACK 2: Original scrapers (still real data)
-                from .scrapers import scrape_all
-                from .transform import clean
-                df = clean(scrape_all())
-                
-                if not df.empty:
-                    logger.info(f"✅ ORIGINAL SCRAPERS SUCCESS: {len(df)} real products")
-                else:
-                    raise Exception("Original scrapers returned no data")
-                    
-            except Exception as original_error:
-                logger.error(f"❌ ALL REAL DATA SOURCES FAILED")
-                logger.error(f"Real data error: {original_error}")
-                logger.error(f"Modern scraper error: {modern_error}")
-                logger.error(f"Primary source error: {e}")
-                
-                # NO DEMO DATA - FAIL COMPLETELY if no real data
-                raise Exception(
-                    "CRITICAL: Unable to collect ANY real price data from online sources. "
-                    "All scrapers failed. Check internet connection and source availability."
-                )
+            raise Exception(
+                "CRITICAL: Unable to collect ANY price data from verified sources. "
+                "Check internet connection and API availability."
+            )
     
     # Save to database
     con = duckdb.connect(db_path)

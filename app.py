@@ -152,57 +152,71 @@ if not raw.empty:
             help=f"Rango de tiempo para mostrar datos {aggregation_type.lower()}s"
         )
     
-    # Apply time filtering based on selection and aggregation
-    if "Personalizado" in time_filter:
-        with col3:
-            start_date = st.date_input("📅 Fecha inicial", min_date, min_value=min_date, max_value=max_date)
-        with col4:
-            end_date = st.date_input("📅 Fecha final", max_date, min_value=min_date, max_value=max_date)
-        
-        if start_date <= end_date:
-            filtered_raw = raw[(raw['date'] >= pd.Timestamp(start_date)) & (raw['date'] <= pd.Timestamp(end_date))]
+    # Apply time filtering based on selection and aggregation with error handling
+    try:
+        if "Personalizado" in time_filter:
+            with col3:
+                start_date = st.date_input("📅 Fecha inicial", min_date, min_value=min_date, max_value=max_date)
+            with col4:
+                end_date = st.date_input("📅 Fecha final", max_date, min_value=min_date, max_value=max_date)
+            
+            if start_date <= end_date:
+                filtered_raw = raw[(raw['date'] >= pd.Timestamp(start_date)) & (raw['date'] <= pd.Timestamp(end_date))]
+                if filtered_raw.empty:
+                    st.warning(f"⚠️ No hay datos disponibles para el período seleccionado ({start_date} - {end_date})")
+                    filtered_raw = raw
+            else:
+                st.error("La fecha inicial debe ser anterior a la fecha final")
+                filtered_raw = raw
         else:
-            st.error("La fecha inicial debe ser anterior a la fecha final")
-            filtered_raw = raw
-    else:
-        # Smart period calculation based on aggregation type
-        if aggregation_type == "Diario":
-            if "7 días" in time_filter:
-                cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(days=7)
-            elif "15 días" in time_filter:
-                cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(days=15)
-            elif "30 días" in time_filter:
-                cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(days=30)
-            elif "60 días" in time_filter:
-                cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(days=60)
-            else:
-                cutoff_date = pd.Timestamp(min_date)
+            # Smart period calculation based on aggregation type
+            if aggregation_type == "Diario":
+                if "7 días" in time_filter:
+                    cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(days=7)
+                elif "15 días" in time_filter:
+                    cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(days=15)
+                elif "30 días" in time_filter:
+                    cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(days=30)
+                elif "60 días" in time_filter:
+                    cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(days=60)
+                else:
+                    cutoff_date = pd.Timestamp(min_date)
+                    
+            elif aggregation_type == "Semanal":
+                if "4 semanas" in time_filter:
+                    cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(weeks=4)
+                elif "8 semanas" in time_filter:
+                    cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(weeks=8)
+                elif "12 semanas" in time_filter:
+                    cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(weeks=12)
+                elif "26 semanas" in time_filter:
+                    cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(weeks=26)
+                else:
+                    cutoff_date = pd.Timestamp(min_date)
+                    
+            else:  # Mensual
+                if "3 meses" in time_filter:
+                    cutoff_date = pd.Timestamp(max_date) - pd.DateOffset(months=3)
+                elif "6 meses" in time_filter:
+                    cutoff_date = pd.Timestamp(max_date) - pd.DateOffset(months=6)
+                elif "año" in time_filter:
+                    cutoff_date = pd.Timestamp(max_date) - pd.DateOffset(months=12)
+                elif "2 años" in time_filter:
+                    cutoff_date = pd.Timestamp(max_date) - pd.DateOffset(months=24)
+                else:
+                    cutoff_date = pd.Timestamp(min_date)
+            
+            filtered_raw = raw[raw['date'] >= cutoff_date]
+            
+            # Validate that we have data for the selected period
+            if filtered_raw.empty:
+                st.warning(f"⚠️ No hay datos disponibles para el período seleccionado ({time_filter})")
+                filtered_raw = raw
                 
-        elif aggregation_type == "Semanal":
-            if "4 semanas" in time_filter:
-                cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(weeks=4)
-            elif "8 semanas" in time_filter:
-                cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(weeks=8)
-            elif "12 semanas" in time_filter:
-                cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(weeks=12)
-            elif "26 semanas" in time_filter:
-                cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(weeks=26)
-            else:
-                cutoff_date = pd.Timestamp(min_date)
-                
-        else:  # Mensual
-            if "3 meses" in time_filter:
-                cutoff_date = pd.Timestamp(max_date) - pd.DateOffset(months=3)
-            elif "6 meses" in time_filter:
-                cutoff_date = pd.Timestamp(max_date) - pd.DateOffset(months=6)
-            elif "año" in time_filter:
-                cutoff_date = pd.Timestamp(max_date) - pd.DateOffset(months=12)
-            elif "2 años" in time_filter:
-                cutoff_date = pd.Timestamp(max_date) - pd.DateOffset(months=24)
-            else:
-                cutoff_date = pd.Timestamp(min_date)
-        
-        filtered_raw = raw[raw['date'] >= cutoff_date]
+    except Exception as period_error:
+        st.error(f"❌ Error al procesar el período seleccionado: {str(period_error)}")
+        st.info("💡 Usando todos los datos disponibles como fallback")
+        filtered_raw = raw
     
     # Apply data aggregation based on type
     if not filtered_raw.empty:
@@ -306,7 +320,7 @@ st.altair_chart(
            y="index:Q",
            tooltip=["date:T", "index:Q"],
        ),
-    use_container_width=True,
+    width='stretch',
 )
 
 st.subheader("Divisiones IPC")
@@ -324,7 +338,7 @@ st.altair_chart(
            color="division:N",
            tooltip=["division:N", "price:Q", "date:T"],
        ),
-    use_container_width=True,
+    width='stretch',
 )
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -351,7 +365,7 @@ if not filtered_raw.empty:
                    tooltip=["store:N", "price:Q", "date:T"],
                )
                .interactive(),
-            use_container_width=True,
+            width='stretch',
         )
         
         # Summary statistics by store
@@ -365,7 +379,7 @@ if not filtered_raw.empty:
         store_stats.columns = ['Precio Promedio', 'Precio Mínimo', 'Precio Máximo', 'Productos']
         
         st.write("**Estadísticas por tienda:**")
-        st.dataframe(store_stats, use_container_width=True)
+        st.dataframe(store_stats, width='stretch')
 
 # ─────────────────────────────────────────────────────────────────────────
 #   Análisis de Fuentes de Datos y Calidad
@@ -470,15 +484,15 @@ try:
                 "price_sources": "Fuentes",
                 "reliability": "Confiabilidad"
             }),
-            use_container_width=True
+            width='stretch'
         )
         
         # Visualization of price consensus
         if len(display_df) > 0:
             chart = (
                 alt.Chart(display_df)
-                .mark_bar()
-                .encode(
+        .mark_bar()
+        .encode(
                     x=alt.X("name:N", title="Producto", sort="-y"),
                     y=alt.Y("price:Q", title="Precio Consenso ($)"),
                     color=alt.Color("num_sources:O", 
@@ -488,7 +502,7 @@ try:
                 )
                 .properties(title="Precios de Consenso por Producto")
             )
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width='stretch')
     else:
         st.info("No se encontraron productos con múltiples fuentes en los datos recientes")
         
