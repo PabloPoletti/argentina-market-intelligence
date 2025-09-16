@@ -10,61 +10,69 @@ logger = logging.getLogger(__name__)
 
 def update_all_sources(db_path="data/prices.duckdb"):
     """
-    Updated function prioritizing real data from modern scrapers
+    REAL DATA ONLY - No synthetic data allowed
+    Comprehensive real-time data collection from multiple Argentine sources
     """
     try:
-        # Try modern scrapers first (priority)
-        from .modern_scrapers import modern_scrape_all
+        # PRIMARY: Real data sources collector
+        from .real_data_sources import collect_real_data_only
         from .transform import clean
         
-        # Use asyncio to run the modern scrapers
+        logger.info("🚀 COLLECTING REAL DATA from multiple Argentine sources...")
+        
+        # Use asyncio to run comprehensive real data collection
         loop = asyncio.get_event_loop()
-        df = loop.run_until_complete(modern_scrape_all())
+        df = loop.run_until_complete(collect_real_data_only())
         df = clean(df)
         
         if not df.empty:
-            logger.info(f"Modern scrapers successful: {len(df)} REAL records collected")
+            logger.info(f"✅ REAL DATA SUCCESS: {len(df)} products from online sources")
+            logger.info("📊 Sources: CheSuper, PreciosHoy, SeguiPrecios, Government, MercadoLibre, Direct Retailers")
         else:
-            raise Exception("Modern scrapers returned no data")
+            raise Exception("Real data collection returned empty dataset")
         
     except Exception as e:
-        logger.warning(f"Modern scrapers failed: {e}. Trying smart aggregation.")
+        logger.error(f"❌ REAL DATA COLLECTION FAILED: {e}")
+        logger.info("🔄 Trying secondary real data sources...")
         
         try:
-            # Fallback to smart aggregation
-            from .smart_aggregator import scrape_all_smart
+            # FALLBACK 1: Modern scrapers (still real data)
+            from .modern_scrapers import modern_scrape_all
             from .transform import clean
             
-            df = loop.run_until_complete(scrape_all_smart())
+            df = loop.run_until_complete(modern_scrape_all())
             df = clean(df)
             
             if not df.empty:
-                logger.info(f"Smart aggregation successful: {len(df)} records")
+                logger.info(f"✅ FALLBACK SUCCESS: {len(df)} real products from modern scrapers")
             else:
-                raise Exception("Smart aggregation returned no data")
+                raise Exception("Modern scrapers returned no data")
                 
-        except Exception as smart_error:
-            logger.warning(f"Smart aggregation failed: {smart_error}. Trying original scrapers.")
+        except Exception as modern_error:
+            logger.warning(f"Modern scrapers failed: {modern_error}")
             
             try:
-                # Fallback to original scrapers
+                # FALLBACK 2: Original scrapers (still real data)
                 from .scrapers import scrape_all
                 from .transform import clean
                 df = clean(scrape_all())
                 
                 if not df.empty:
-                    logger.info(f"Original scrapers successful: {len(df)} records")
+                    logger.info(f"✅ ORIGINAL SCRAPERS SUCCESS: {len(df)} real products")
                 else:
                     raise Exception("Original scrapers returned no data")
                     
             except Exception as original_error:
-                logger.error(f"All real data sources failed. Original error: {original_error}")
-                logger.info("Using demo data as last resort for system demonstration.")
+                logger.error(f"❌ ALL REAL DATA SOURCES FAILED")
+                logger.error(f"Real data error: {original_error}")
+                logger.error(f"Modern scraper error: {modern_error}")
+                logger.error(f"Primary source error: {e}")
                 
-                from .demo_data import DemoDataGenerator
-                generator = DemoDataGenerator()
-                df = generator.generate_demo_data(num_days=14, include_trends=True)
-                logger.info(f"Demo data generated: {len(df)} records")
+                # NO DEMO DATA - FAIL COMPLETELY if no real data
+                raise Exception(
+                    "CRITICAL: Unable to collect ANY real price data from online sources. "
+                    "All scrapers failed. Check internet connection and source availability."
+                )
     
     # Save to database
     con = duckdb.connect(db_path)

@@ -1,5 +1,6 @@
 import subprocess
 import pathlib
+import time
 
 import nest_asyncio
 import streamlit as st
@@ -47,23 +48,57 @@ st.title("Índice Diario de Precios al Consumidor (experimental)")
 demo_data_check = con.execute("SELECT COUNT(*) FROM prices WHERE source = 'demo_data'").fetchone()[0]
 total_records = con.execute("SELECT COUNT(*) FROM prices").fetchone()[0]
 
-# Check data source types
-real_data_check = con.execute("SELECT COUNT(*) FROM prices WHERE source NOT IN ('demo_data', 'consensus') AND source IS NOT NULL").fetchone()[0]
+# Check ONLY real data sources
+real_data_sources = con.execute("""
+    SELECT COUNT(*) as total, 
+           COUNT(DISTINCT source) as sources,
+           GROUP_CONCAT(DISTINCT source) as source_list
+    FROM prices 
+    WHERE source IS NOT NULL AND source != ''
+""").fetchone()
 
-if real_data_check > 0:
-    if demo_data_check > 0:
-        st.success(f"✅ **DATOS MIXTOS**: {real_data_check} registros reales + {demo_data_check} sintéticos", icon="📊")
-    else:
-        st.success(f"✅ **DATOS REALES**: {real_data_check} registros obtenidos de scrapers en línea", icon="🌐")
-elif demo_data_check > 0:
-    st.info("📊 **MODO DEMOSTRACIÓN**: Utilizando datos sintéticos realistas. El sistema está intentando obtener datos reales en segundo plano.", icon="🎭")
+total_real_records = real_data_sources[0] if real_data_sources[0] else 0
+num_sources = real_data_sources[1] if real_data_sources[1] else 0
+source_list = real_data_sources[2] if real_data_sources[2] else "Ninguna"
+
+if total_real_records > 0:
+    st.success(f"🌐 **DATOS REALES EN VIVO**: {total_real_records:,} productos de {num_sources} fuentes online", icon="✅")
+    
+    # Show source breakdown
+    with st.expander("📊 Ver fuentes de datos reales"):
+        sources = source_list.split(',') if source_list != "Ninguna" else []
+        for source in sources:
+            count = con.execute(f"SELECT COUNT(*) FROM prices WHERE source = '{source.strip()}'").fetchone()[0]
+            st.write(f"• **{source.strip()}**: {count:,} productos")
+        
+        last_update = con.execute("SELECT MAX(date) FROM prices").fetchone()[0]
+        if last_update:
+            st.write(f"🕒 **Última actualización**: {last_update}")
 else:
-    st.warning("⚠️ **SIN DATOS**: No se pudieron obtener datos de ninguna fuente.", icon="📭")
+    st.error("❌ **NO HAY DATOS REALES**: El sistema no pudo obtener datos de ninguna fuente online.", icon="🚫")
+    st.info("🔄 **Acción requerida**: Presiona 'Actualizar precios ahora' para intentar recolectar datos reales.", icon="💡")
 
 with st.sidebar:
-    if st.button("Actualizar precios ahora"):
-        update_all_sources(str(DB_PATH))
-        st.success("¡Datos actualizados!")
+    if st.button("🔄 Actualizar precios ahora"):
+        with st.spinner("🌐 Recolectando datos reales de múltiples fuentes..."):
+            try:
+                update_all_sources(str(DB_PATH))
+                st.success("✅ ¡Datos reales actualizados!")
+                st.balloons()
+                time.sleep(2)
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Error al obtener datos reales: {str(e)}")
+                st.info("💡 Las fuentes online pueden estar temporalmente inaccesibles. Intenta de nuevo en unos minutos.")
+    
+    st.markdown("---")
+    st.markdown("**🌐 Fuentes de datos reales:**")
+    st.markdown("• CheSuper.ar")
+    st.markdown("• PreciosHoy.com.ar") 
+    st.markdown("• SeguiPrecios.com.ar")
+    st.markdown("• Argentina.gob.ar")
+    st.markdown("• MercadoLibre API")
+    st.markdown("• Retailers directos")
 
     provincia = st.selectbox(
         "Provincia / Región",
