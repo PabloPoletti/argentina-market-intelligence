@@ -43,6 +43,16 @@ if ("prices",) not in tbls:
 # ---------- C)  Streamlit UI --------------------------------------------
 st.title("Índice Diario de Precios al Consumidor (experimental)")
 
+# Check if we're using demo data
+demo_data_check = con.execute("SELECT COUNT(*) FROM prices WHERE source = 'demo_data'").fetchone()[0]
+total_records = con.execute("SELECT COUNT(*) FROM prices").fetchone()[0]
+
+if demo_data_check > 0:
+    if demo_data_check == total_records:
+        st.warning("📊 **MODO DEMOSTRACIÓN**: Mostrando datos sintéticos realistas. Los scrapers están temporalmente inactivos debido a cambios en los sitios web de destino.", icon="🎭")
+    else:
+        st.info(f"📊 **DATOS MIXTOS**: {demo_data_check} registros sintéticos + {total_records - demo_data_check} registros reales", icon="🔗")
+
 with st.sidebar:
     if st.button("Actualizar precios ahora"):
         update_all_sources(str(DB_PATH))
