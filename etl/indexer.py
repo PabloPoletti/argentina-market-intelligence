@@ -57,6 +57,28 @@ def update_all_sources(db_path="data/prices.duckdb"):
         )
     """)
     
+    # Ensure DataFrame has all required columns
+    required_columns = [
+        'date', 'store', 'sku', 'name', 'price', 'division', 'province',
+        'source', 'price_sources', 'num_sources', 'price_min', 'price_max', 
+        'price_std', 'reliability_weight'
+    ]
+    
+    # Add missing columns with default values
+    for col in required_columns:
+        if col not in df.columns:
+            if col == 'source':
+                df[col] = 'legacy'
+            elif col == 'num_sources':
+                df[col] = 1
+            elif col == 'reliability_weight':
+                df[col] = 1.0
+            else:
+                df[col] = None
+    
+    # Reorder columns to match table schema
+    df = df[required_columns]
+    
     # Insert new data
     try:
         con.execute("INSERT INTO prices SELECT * FROM df")

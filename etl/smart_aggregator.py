@@ -160,9 +160,13 @@ class PriceAggregator:
                         "price": stats["avg_price"],
                         "division": self._map_ml_division(query),
                         "province": "Nacional",
+                        "source": "MercadoLibre",
+                        "price_sources": "MercadoLibre",
+                        "num_sources": 1,
                         "price_min": stats["min_price"],
                         "price_max": stats["max_price"],
-                        "price_source": "aggregated"
+                        "price_std": 0.0,
+                        "reliability_weight": 1.0
                     })
             except Exception as e:
                 logger.warning(f"Failed to fetch ML data for {query}: {e}")
@@ -249,6 +253,24 @@ class PriceAggregator:
                 row["price_min"] = group["price"].min()
                 row["price_max"] = group["price"].max()
                 row["price_std"] = group["price"].std()
+                
+                # Ensure all required columns are present
+                required_columns = [
+                    'date', 'store', 'sku', 'name', 'price', 'division', 'province',
+                    'source', 'price_sources', 'num_sources', 'price_min', 'price_max', 
+                    'price_std', 'reliability_weight'
+                ]
+                
+                for col in required_columns:
+                    if col not in row or pd.isna(row[col]):
+                        if col == 'source':
+                            row[col] = 'consensus'
+                        elif col == 'num_sources':
+                            row[col] = len(group)
+                        elif col == 'reliability_weight':
+                            row[col] = np.mean(group['reliability_weight'].values)
+                        elif col == 'price_sources':
+                            row[col] = ", ".join(group["source"].unique())
                 
                 aggregated_rows.append(row)
         
