@@ -15,8 +15,7 @@ import duckdb
 import pandas as pd
 import altair as alt
 
-# Importamos el scraper liviano de ML
-from etl.ml_scraper import ml_price_stats
+# Importamos solo los módulos que realmente existen
 from etl.indexer import update_all_sources, compute_indices
 
 nest_asyncio.apply()  # re‑usa el event‑loop
@@ -36,25 +35,45 @@ DB_PATH = pathlib.Path("data/prices.duckdb")
 DB_PATH.parent.mkdir(exist_ok=True)
 con = duckdb.connect(str(DB_PATH))
 
-# Si no existe la tabla, la creamos y lanzamos el ETL
+# LIMPIAR DATOS SINTÉTICOS y asegurar tabla actualizada
 tbls = con.execute("SHOW TABLES").fetchall()
 if ("prices",) not in tbls:
+    update_all_sources(str(DB_PATH))
+else:
+    # ELIMINAR CUALQUIER RASTRO DE DATOS SINTÉTICOS
+    try:
+        demo_count = con.execute("SELECT COUNT(*) FROM prices WHERE source = 'demo_data' OR source LIKE '%demo%'").fetchone()[0]
+        if demo_count > 0:
+            st.warning(f"🧹 Limpiando {demo_count} registros de datos sintéticos...")
+            con.execute("DELETE FROM prices WHERE source = 'demo_data' OR source LIKE '%demo%'")
+            st.success("✅ Datos sintéticos eliminados completamente")
+            
+        # Verificar que solo tenemos datos reales
+        real_count = con.execute("SELECT COUNT(*) FROM prices").fetchone()[0]
+        if real_count == 0:
+            st.info("🔄 Base de datos limpia. Recolectando solo datos reales...")
+            update_all_sources(str(DB_PATH))
+    except Exception as e:
+        st.error(f"Error al limpiar datos: {e}")
     update_all_sources(str(DB_PATH))
 
 # ---------- C)  Streamlit UI --------------------------------------------
 st.title("Índice Diario de Precios al Consumidor (experimental)")
 
-# Check if we're using demo data
-demo_data_check = con.execute("SELECT COUNT(*) FROM prices WHERE source = 'demo_data'").fetchone()[0]
-total_records = con.execute("SELECT COUNT(*) FROM prices").fetchone()[0]
+# Verificar que NO hay datos sintéticos (política cero demo data)
+# NO debe existir NINGÚN dato sintético en el sistema
 
-# Check ONLY real data sources
+# Verificar SOLO fuentes de datos REALES (excluyendo cualquier sintético)
 real_data_sources = con.execute("""
     SELECT COUNT(*) as total, 
            COUNT(DISTINCT source) as sources,
            GROUP_CONCAT(DISTINCT source) as source_list
     FROM prices 
-    WHERE source IS NOT NULL AND source != ''
+    WHERE source IS NOT NULL 
+      AND source != '' 
+      AND source NOT LIKE '%demo%' 
+      AND source NOT LIKE '%synthetic%'
+      AND source NOT LIKE '%test%'
 """).fetchone()
 
 total_real_records = real_data_sources[0] if real_data_sources[0] else 0
@@ -261,8 +280,8 @@ if not raw.empty:
             }).dropna()
             
         else:  # Mensual
-            # Monthly aggregation
-            aggregated_raw = temp_df.resample('M').agg({
+            # Monthly aggregation (ME = Month End, replaces deprecated 'M')
+            aggregated_raw = temp_df.resample('ME').agg({
                 'price': 'mean',
                 'store': 'first',
                 'sku': 'first',
@@ -492,8 +511,8 @@ try:
                     tooltip=["name:N", "price:Q", "num_sources:O", "price_sources:N"]
                 )
                 .properties(title="Precios de Consenso por Producto")
-            )
-            st.altair_chart(chart, use_container_width=True)
+    )
+        st.altair_chart(chart, use_container_width=True)
     else:
         st.info("No se encontraron productos con múltiples fuentes en los datos recientes")
         
