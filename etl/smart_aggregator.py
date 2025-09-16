@@ -230,17 +230,9 @@ class PriceAggregator:
             all_data.append(df)
         
         if not all_data:
-            logger.warning("No data from any source")
-            # Use demo data as fallback when no real data is available
-            try:
-                from .demo_data import DemoDataGenerator
-                generator = DemoDataGenerator()
-                demo_df = generator.generate_demo_data(num_days=7, include_trends=True)
-                logger.info(f"Using demo data as fallback: {len(demo_df)} records")
-                return demo_df
-            except Exception as e:
-                logger.error(f"Failed to generate demo data: {e}")
-                return pd.DataFrame()
+            logger.error("❌ NO REAL DATA collected from any source")
+            # NO SYNTHETIC DATA POLICY - Fail if no real data available
+            raise Exception("CRITICAL: Unable to collect real price data from any online source. No fallback to synthetic data allowed.")
         
         # Combine all data
         combined_df = pd.concat(all_data, ignore_index=True)
