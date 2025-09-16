@@ -477,8 +477,8 @@ try:
         if len(display_df) > 0:
             chart = (
                 alt.Chart(display_df)
-        .mark_bar()
-        .encode(
+                .mark_bar()
+                .encode(
                     x=alt.X("name:N", title="Producto", sort="-y"),
                     y=alt.Y("price:Q", title="Precio Consenso ($)"),
                     color=alt.Color("num_sources:O", 
@@ -487,9 +487,9 @@ try:
                     tooltip=["name:N", "price:Q", "num_sources:O", "price_sources:N"]
                 )
                 .properties(title="Precios de Consenso por Producto")
-    )
-    st.altair_chart(chart, width='stretch')
-else:
+            )
+            st.altair_chart(chart, width='stretch')
+    else:
         st.info("No se encontraron productos con múltiples fuentes en los datos recientes")
         
 except Exception as e:
