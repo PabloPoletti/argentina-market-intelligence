@@ -1,0 +1,59 @@
+[global]
+
+# Set to false when deploying to cloud platforms
+developmentMode = false
+
+[server]
+
+# Port configuration
+port = 8501
+
+# Enable CORS for cross-origin requests
+enableCORS = false
+
+# Enable XSRF protection
+enableXsrfProtection = false
+
+# Automatically reload when app files change
+runOnSave = false
+
+# Address to bind the server to
+address = "0.0.0.0"
+
+# Maximum upload size (MB)
+maxUploadSize = 200
+
+[browser]
+
+# Automatically open browser when starting
+gatherUsageStats = false
+
+[theme]
+
+# Primary color for interactive elements
+primaryColor = "#FF6B6B"
+
+# Background color for the main content area
+backgroundColor = "#FFFFFF"
+
+# Background color for the sidebar
+secondaryBackgroundColor = "#F0F2F6"
+
+# Color for text
+textColor = "#262730"
+
+# Font family
+font = "sans serif"
+
+[client]
+
+# Show error details in the browser
+showErrorDetails = true
+
+# Enable connection status widget
+caching = true
+
+[deprecation]
+
+# Disable deprecation warnings
+showPyplotGlobalUse = false
