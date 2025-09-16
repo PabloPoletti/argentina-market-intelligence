@@ -320,7 +320,7 @@ st.altair_chart(
            y="index:Q",
            tooltip=["date:T", "index:Q"],
        ),
-    width='stretch',
+    use_container_width=True,
 )
 
 st.subheader("Divisiones IPC")
@@ -338,7 +338,7 @@ st.altair_chart(
            color="division:N",
            tooltip=["division:N", "price:Q", "date:T"],
        ),
-    width='stretch',
+    use_container_width=True,
 )
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -365,7 +365,7 @@ if not filtered_raw.empty:
                    tooltip=["store:N", "price:Q", "date:T"],
                )
                .interactive(),
-            width='stretch',
+            use_container_width=True,
         )
         
         # Summary statistics by store
@@ -379,7 +379,7 @@ if not filtered_raw.empty:
         store_stats.columns = ['Precio Promedio', 'Precio Mínimo', 'Precio Máximo', 'Productos']
         
         st.write("**Estadísticas por tienda:**")
-        st.dataframe(store_stats, width='stretch')
+        st.dataframe(store_stats, use_container_width=True)
 
 # ─────────────────────────────────────────────────────────────────────────
 #   Análisis de Fuentes de Datos y Calidad
@@ -484,7 +484,7 @@ try:
                 "price_sources": "Fuentes",
                 "reliability": "Confiabilidad"
             }),
-            width='stretch'
+            use_container_width=True
         )
         
         # Visualization of price consensus
@@ -502,7 +502,7 @@ try:
                 )
                 .properties(title="Precios de Consenso por Producto")
             )
-            st.altair_chart(chart, width='stretch')
+            st.altair_chart(chart, use_container_width=True)
     else:
         st.info("No se encontraron productos con múltiples fuentes en los datos recientes")
         
