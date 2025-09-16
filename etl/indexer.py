@@ -10,45 +10,61 @@ logger = logging.getLogger(__name__)
 
 def update_all_sources(db_path="data/prices.duckdb"):
     """
-    Updated function using smart aggregation with fallback to original method
+    Updated function prioritizing real data from modern scrapers
     """
     try:
-        # Try smart aggregation first
-        from .smart_aggregator import scrape_all_smart
+        # Try modern scrapers first (priority)
+        from .modern_scrapers import modern_scrape_all
         from .transform import clean
         
-        # Use asyncio to run the smart scraper
+        # Use asyncio to run the modern scrapers
         loop = asyncio.get_event_loop()
-        df = loop.run_until_complete(scrape_all_smart())
+        df = loop.run_until_complete(modern_scrape_all())
         df = clean(df)
         
-        logger.info(f"Smart aggregation successful: {len(df)} records from multiple sources")
+        if not df.empty:
+            logger.info(f"Modern scrapers successful: {len(df)} REAL records collected")
+        else:
+            raise Exception("Modern scrapers returned no data")
         
     except Exception as e:
-        logger.warning(f"Smart aggregation failed: {e}. Falling back to original method.")
+        logger.warning(f"Modern scrapers failed: {e}. Trying smart aggregation.")
         
-        # Fallback to original method
         try:
-            from .scrapers import scrape_all
+            # Fallback to smart aggregation
+            from .smart_aggregator import scrape_all_smart
             from .transform import clean
-            df = clean(scrape_all())
             
-            logger.info(f"Fallback method successful: {len(df)} records")
+            df = loop.run_until_complete(scrape_all_smart())
+            df = clean(df)
             
-            # If fallback also fails or returns no data, use demo data
-            if df.empty:
-                logger.warning("Original scrapers also returned no data. Using demo data for demonstration.")
+            if not df.empty:
+                logger.info(f"Smart aggregation successful: {len(df)} records")
+            else:
+                raise Exception("Smart aggregation returned no data")
+                
+        except Exception as smart_error:
+            logger.warning(f"Smart aggregation failed: {smart_error}. Trying original scrapers.")
+            
+            try:
+                # Fallback to original scrapers
+                from .scrapers import scrape_all
+                from .transform import clean
+                df = clean(scrape_all())
+                
+                if not df.empty:
+                    logger.info(f"Original scrapers successful: {len(df)} records")
+                else:
+                    raise Exception("Original scrapers returned no data")
+                    
+            except Exception as original_error:
+                logger.error(f"All real data sources failed. Original error: {original_error}")
+                logger.info("Using demo data as last resort for system demonstration.")
+                
                 from .demo_data import DemoDataGenerator
                 generator = DemoDataGenerator()
                 df = generator.generate_demo_data(num_days=14, include_trends=True)
                 logger.info(f"Demo data generated: {len(df)} records")
-                
-        except Exception as fallback_error:
-            logger.error(f"Fallback method failed: {fallback_error}. Using demo data.")
-            from .demo_data import DemoDataGenerator
-            generator = DemoDataGenerator()
-            df = generator.generate_demo_data(num_days=14, include_trends=True)
-            logger.info(f"Demo data generated: {len(df)} records")
     
     # Save to database
     con = duckdb.connect(db_path)

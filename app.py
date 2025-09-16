@@ -47,11 +47,18 @@ st.title("Índice Diario de Precios al Consumidor (experimental)")
 demo_data_check = con.execute("SELECT COUNT(*) FROM prices WHERE source = 'demo_data'").fetchone()[0]
 total_records = con.execute("SELECT COUNT(*) FROM prices").fetchone()[0]
 
-if demo_data_check > 0:
-    if demo_data_check == total_records:
-        st.warning("📊 **MODO DEMOSTRACIÓN**: Mostrando datos sintéticos realistas. Los scrapers están temporalmente inactivos debido a cambios en los sitios web de destino.", icon="🎭")
+# Check data source types
+real_data_check = con.execute("SELECT COUNT(*) FROM prices WHERE source NOT IN ('demo_data', 'consensus') AND source IS NOT NULL").fetchone()[0]
+
+if real_data_check > 0:
+    if demo_data_check > 0:
+        st.success(f"✅ **DATOS MIXTOS**: {real_data_check} registros reales + {demo_data_check} sintéticos", icon="📊")
     else:
-        st.info(f"📊 **DATOS MIXTOS**: {demo_data_check} registros sintéticos + {total_records - demo_data_check} registros reales", icon="🔗")
+        st.success(f"✅ **DATOS REALES**: {real_data_check} registros obtenidos de scrapers en línea", icon="🌐")
+elif demo_data_check > 0:
+    st.info("📊 **MODO DEMOSTRACIÓN**: Utilizando datos sintéticos realistas. El sistema está intentando obtener datos reales en segundo plano.", icon="🎭")
+else:
+    st.warning("⚠️ **SIN DATOS**: No se pudieron obtener datos de ninguna fuente.", icon="📭")
 
 with st.sidebar:
     if st.button("Actualizar precios ahora"):
@@ -67,7 +74,67 @@ with st.sidebar:
 #   Carga de datos y cálculo de índice simple (sin diferenciación provincial)
 # ─────────────────────────────────────────────────────────────────────────
 raw = con.execute("SELECT * FROM prices").fetch_df()
-idx = compute_indices(raw)  # nueva firma: solo DataFrame
+
+# Convert date column to datetime for filtering
+if not raw.empty:
+    raw['date'] = pd.to_datetime(raw['date'])
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    #   Controles de Filtrado Temporal
+    # ─────────────────────────────────────────────────────────────────────────
+    st.subheader("🕒 Filtros Temporales")
+    
+    # Get date range from data
+    min_date = raw['date'].min().date()
+    max_date = raw['date'].max().date()
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        time_filter = st.selectbox(
+            "Período de análisis",
+            ["Todo el período", "Últimos 7 días", "Últimos 30 días", "Últimos 90 días", "Personalizado"],
+            index=0
+        )
+    
+    # Apply time filtering based on selection
+    if time_filter == "Últimos 7 días":
+        cutoff_date = max_date - pd.Timedelta(days=7)
+        filtered_raw = raw[raw['date'] >= cutoff_date]
+    elif time_filter == "Últimos 30 días":
+        cutoff_date = max_date - pd.Timedelta(days=30)
+        filtered_raw = raw[raw['date'] >= cutoff_date]
+    elif time_filter == "Últimos 90 días":
+        cutoff_date = max_date - pd.Timedelta(days=90)
+        filtered_raw = raw[raw['date'] >= cutoff_date]
+    elif time_filter == "Personalizado":
+        with col2:
+            start_date = st.date_input("Fecha inicial", min_date, min_value=min_date, max_value=max_date)
+        with col3:
+            end_date = st.date_input("Fecha final", max_date, min_value=min_date, max_value=max_date)
+        
+        if start_date <= end_date:
+            filtered_raw = raw[(raw['date'] >= pd.Timestamp(start_date)) & (raw['date'] <= pd.Timestamp(end_date))]
+        else:
+            st.error("La fecha inicial debe ser anterior a la fecha final")
+            filtered_raw = raw
+    else:
+        filtered_raw = raw
+    
+    # Display filtered period info
+    if not filtered_raw.empty:
+        period_start = filtered_raw['date'].min().strftime('%d/%m/%Y')
+        period_end = filtered_raw['date'].max().strftime('%d/%m/%Y')
+        total_records = len(filtered_raw)
+        st.info(f"📅 **Período seleccionado**: {period_start} a {period_end} ({total_records} registros)")
+    else:
+        st.warning("⚠️ No hay datos en el período seleccionado")
+        filtered_raw = raw  # Fallback to all data
+        
+else:
+    filtered_raw = raw
+
+idx = compute_indices(filtered_raw)  # nueva firma: solo DataFrame
 
 # ─────────────────────────────────────────────────────────────────────────
 #   Gráficos IPC
@@ -86,7 +153,7 @@ st.altair_chart(
 
 st.subheader("Divisiones IPC")
 div_df = (
-    raw.groupby(["division", "date"])
+    filtered_raw.groupby(["division", "date"])
        .price.mean()
        .reset_index()
 )
@@ -101,6 +168,46 @@ st.altair_chart(
        ),
     use_container_width=True,
 )
+
+# ─────────────────────────────────────────────────────────────────────────
+#   Comparación por Tiendas (datos filtrados)
+# ─────────────────────────────────────────────────────────────────────────
+if not filtered_raw.empty:
+    st.subheader("🏪 Comparación de Precios por Tienda")
+    
+    # Group by store and date for comparison
+    store_df = (
+        filtered_raw.groupby(["store", "date"])
+                   .price.mean()
+                   .reset_index()
+    )
+    
+    if not store_df.empty:
+        st.altair_chart(
+            alt.Chart(store_df)
+               .mark_line(point=True)
+               .encode(
+                   x="date:T",
+                   y="price:Q",
+                   color="store:N",
+                   tooltip=["store:N", "price:Q", "date:T"],
+               )
+               .interactive(),
+            use_container_width=True,
+        )
+        
+        # Summary statistics by store
+        store_stats = (
+            filtered_raw.groupby("store")
+                       .agg({
+                           'price': ['mean', 'min', 'max', 'count']
+                       })
+                       .round(2)
+        )
+        store_stats.columns = ['Precio Promedio', 'Precio Mínimo', 'Precio Máximo', 'Productos']
+        
+        st.write("**Estadísticas por tienda:**")
+        st.dataframe(store_stats, use_container_width=True)
 
 # ─────────────────────────────────────────────────────────────────────────
 #   Análisis de Fuentes de Datos y Calidad
