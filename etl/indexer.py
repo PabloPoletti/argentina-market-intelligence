@@ -10,53 +10,31 @@ logger = logging.getLogger(__name__)
 
 def update_all_sources(db_path="data/prices.duckdb"):
     """
-    VERIFIED REAL DATA ONLY - Only working sources
-    Uses only data sources verified to work in production (September 2024)
+    WORKING SOURCES ONLY - September 2024 Verified
+    Uses ONLY data sources that have been tested and confirmed to work
     """
     try:
-        # PRIMARY: Verified working sources only
-        from .verified_sources import collect_verified_data_only
+        # PRIMARY: Working sources only (no broken scrapers)
+        from .working_sources import collect_working_data_only
         from .transform import clean
         
-        logger.info("🚀 COLLECTING DATA from VERIFIED working sources...")
+        logger.info("🚀 COLLECTING DATA from WORKING sources only...")
         
-        # Use asyncio to run verified data collection
-        loop = asyncio.get_event_loop()
-        df = loop.run_until_complete(collect_verified_data_only())
+        # Use new working sources system
+        df = collect_working_data_only()
         df = clean(df)
         
         if not df.empty:
-            logger.info(f"✅ VERIFIED DATA SUCCESS: {len(df)} products from working sources")
-            logger.info("📊 Working Sources: MercadoLibre API, Market Reference Data")
+            logger.info(f"✅ WORKING SOURCES SUCCESS: {len(df)} products")
+            working_sources = df['source'].unique().tolist()
+            logger.info(f"📊 Active Sources: {', '.join(working_sources)}")
         else:
-            raise Exception("Verified data collection returned empty dataset")
+            raise Exception("Working sources returned empty dataset")
         
     except Exception as e:
-        logger.error(f"❌ VERIFIED DATA COLLECTION FAILED: {e}")
-        logger.info("🔄 Trying fallback sources...")
-        
-        try:
-            # FALLBACK 1: Try original real_data_sources if available
-            from .real_data_sources import collect_real_data_only
-            from .transform import clean
-            
-            df = loop.run_until_complete(collect_real_data_only())
-            df = clean(df)
-            
-            if not df.empty:
-                logger.info(f"✅ FALLBACK SUCCESS: {len(df)} products from extended sources")
-            else:
-                raise Exception("Extended sources returned no data")
-                
-        except Exception as fallback_error:
-            logger.error(f"❌ ALL DATA SOURCES FAILED")
-            logger.error(f"Verified sources error: {e}")
-            logger.error(f"Fallback error: {fallback_error}")
-            
-            raise Exception(
-                "CRITICAL: Unable to collect ANY price data from verified sources. "
-                "Check internet connection and API availability."
-            )
+        logger.error(f"❌ Working sources failed: {e}")
+        # NO FALLBACK - fail honestly if sources don't work
+        raise Exception("All working data sources failed. No synthetic data fallback.")
     
     # Save to database
     con = duckdb.connect(db_path)
@@ -103,19 +81,24 @@ def update_all_sources(db_path="data/prices.duckdb"):
     # Reorder columns to match table schema
     df = df[required_columns]
     
-    # Insert new data
+    # Insert new data (replace old data)
     try:
+        con.execute("DELETE FROM prices")  # Clear old data
         con.execute("INSERT INTO prices SELECT * FROM df")
         logger.info(f"Successfully inserted {len(df)} records into database")
     except Exception as e:
         logger.error(f"Database insertion failed: {e}")
         raise
     
-    # Store aggregation metadata
+    # Store simple health report
     try:
-        from .smart_aggregator import PriceAggregator
-        aggregator = PriceAggregator()
-        health_report = aggregator.get_source_health_report()
+        sources_count = df.groupby('source').size().to_dict()
+        health_report = {
+            'timestamp': datetime.now().isoformat(),
+            'sources': sources_count,
+            'total_products': len(df),
+            'status': 'active'
+        }
         
         # Save health report to separate table
         con.execute("""
