@@ -82,7 +82,7 @@ with st.sidebar:
     if st.button("🔄 Actualizar precios ahora"):
         with st.spinner("🌐 Recolectando datos reales de múltiples fuentes..."):
             try:
-        update_all_sources(str(DB_PATH))
+                update_all_sources(str(DB_PATH))
                 st.success("✅ ¡Datos reales actualizados!")
                 st.balloons()
                 time.sleep(2)

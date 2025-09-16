@@ -4,7 +4,7 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.33+-red.svg)](https://streamlit.io)
 [![DuckDB](https://img.shields.io/badge/DuckDB-0.10+-yellow.svg)](https://duckdb.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Data Sources](https://img.shields.io/badge/Sources-4_Active-brightgreen.svg)](#data-sources)
+[![Data Sources](https://img.shields.io/badge/Sources-6_Real_Sources-brightgreen.svg)](#data-sources)
 [![Real-time](https://img.shields.io/badge/Updates-Real--time-orange.svg)](#features)
 
 > **Real-time Consumer Price Index (CPI) tracking system for Argentina with intelligent multi-source data aggregation and consensus-based pricing analytics.**
@@ -26,14 +26,18 @@ Argentina Market Intelligence is a **next-generation economic monitoring platfor
 ## ✨ **Key Features**
 
 ### **🧠 Intelligent Price Aggregation**
-- **Multi-source consensus pricing** from 4+ major retailers
+- **Multi-source consensus pricing** from 6+ real data sources
 - **Automated outlier detection** using statistical methods
 - **Weighted averaging** based on source reliability
 - **Real-time quality scoring** for data validation
+- **Zero synthetic data**: 100% authentic market prices
 
 ### **📊 Advanced Analytics Dashboard**
 - **Interactive CPI visualization** with historical trends
+- **Smart temporal aggregation**: Daily, Weekly, Monthly views
+- **Adaptive time ranges**: 7-60 days, 4-26 weeks, 3 months-2 years
 - **Division-based analysis** (food, beverages, etc.)
+- **Store comparison charts** with interactive filtering
 - **Provincial and national coverage**
 - **Real-time source health monitoring**
 
@@ -53,16 +57,58 @@ Argentina Market Intelligence is a **next-generation economic monitoring platfor
 
 ## 🏢 **Data Sources**
 
-Our platform aggregates data from Argentina's leading retail chains:
+Our platform aggregates **100% REAL DATA** from multiple Argentine sources:
 
+### **🛒 Retail Chains (Direct Scraping)**
 | Source | Type | Coverage | Status |
 |--------|------|----------|--------|
 | **🛒 Coto Digital** | Major Supermarket Chain | National | 🟢 Active |
 | **🏪 La Anónima** | Regional Supermarket | Multi-Provincial | 🟢 Active |
 | **🛍️ Jumbo** | Hypermarket Chain | Major Cities | 🟢 Active |
-| **🛒 MercadoLibre** | E-commerce Platform | National | 🟢 Active |
+| **🛒 Carrefour** | Hypermarket Chain | Major Cities | 🟢 Active |
+| **🏪 Día** | Discount Supermarket | National | 🟢 Active |
 
-*All data is collected from public sources following ethical scraping practices.*
+### **📊 Price Comparison Platforms**
+| Source | Type | Coverage | Status |
+|--------|------|----------|--------|
+| **📈 CheSuper.ar** | Price Comparison Platform | Multi-retailer | 🟢 Active |
+| **📊 PreciosHoy.com.ar** | Daily Price Monitoring | National | 🟢 Active |
+| **📉 SeguiPrecios.com.ar** | Historical Price Tracking | National | 🟢 Active |
+
+### **🏛️ Official Data Sources**
+| Source | Type | Coverage | Status |
+|--------|------|----------|--------|
+| **🇦🇷 Argentina.gob.ar** | Government Price Data | Official Prices | 🟢 Active |
+
+### **🛍️ Marketplace APIs**
+| Source | Type | Coverage | Status |
+|--------|------|----------|--------|
+| **🛒 MercadoLibre API** | E-commerce Platform | National Marketplace | 🟢 Active |
+
+**🚫 ZERO SYNTHETIC DATA POLICY**: All data comes from real online sources. No simulated or demo data.
+
+---
+
+## ⏰ **Advanced Temporal Analytics**
+
+Our platform features sophisticated temporal aggregation capabilities:
+
+### **🔄 Smart Data Aggregation**
+- **Daily Analysis**: Raw daily price movements with 7-60 day ranges
+- **Weekly Analysis**: Monday-to-Sunday averages with 4-26 week ranges  
+- **Monthly Analysis**: Monthly price averages with 3 months to 2 years ranges
+
+### **📊 Intelligent Time Controls**
+- **Adaptive time ranges**: Options change based on aggregation type
+- **Professional resampling**: Uses pandas resample with proper statistics
+- **Real-time feedback**: Shows selected period and record counts
+- **Graceful handling**: Fallback to raw data when aggregation insufficient
+
+### **📈 Data Processing**
+- **Mean prices** for main trend analysis
+- **Min/Max ranges** for volatility assessment  
+- **Source counting** and reliability preservation
+- **Statistical validation** with dropna() for clean datasets
 
 ---
 
