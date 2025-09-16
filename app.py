@@ -82,7 +82,7 @@ with st.sidebar:
     if st.button("🔄 Actualizar precios ahora"):
         with st.spinner("🌐 Recolectando datos reales de múltiples fuentes..."):
             try:
-                update_all_sources(str(DB_PATH))
+        update_all_sources(str(DB_PATH))
                 st.success("✅ ¡Datos reales actualizados!")
                 st.balloons()
                 time.sleep(2)
@@ -115,38 +115,49 @@ if not raw.empty:
     raw['date'] = pd.to_datetime(raw['date'])
     
     # ─────────────────────────────────────────────────────────────────────────
-    #   Controles de Filtrado Temporal
+    #   Controles Avanzados de Agregación Temporal
     # ─────────────────────────────────────────────────────────────────────────
-    st.subheader("🕒 Filtros Temporales")
+    st.subheader("📊 Análisis Temporal Avanzado")
     
     # Get date range from data
     min_date = raw['date'].min().date()
     max_date = raw['date'].max().date()
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        time_filter = st.selectbox(
-            "Período de análisis",
-            ["Todo el período", "Últimos 7 días", "Últimos 30 días", "Últimos 90 días", "Personalizado"],
-            index=0
+        aggregation_type = st.selectbox(
+            "🔄 Agregación de datos",
+            ["Diario", "Semanal", "Mensual"],
+            index=0,
+            help="Selecciona cómo agrupar los datos de precios"
         )
     
-    # Apply time filtering based on selection
-    if time_filter == "Últimos 7 días":
-        cutoff_date = max_date - pd.Timedelta(days=7)
-        filtered_raw = raw[raw['date'] >= cutoff_date]
-    elif time_filter == "Últimos 30 días":
-        cutoff_date = max_date - pd.Timedelta(days=30)
-        filtered_raw = raw[raw['date'] >= cutoff_date]
-    elif time_filter == "Últimos 90 días":
-        cutoff_date = max_date - pd.Timedelta(days=90)
-        filtered_raw = raw[raw['date'] >= cutoff_date]
-    elif time_filter == "Personalizado":
-        with col2:
-            start_date = st.date_input("Fecha inicial", min_date, min_value=min_date, max_value=max_date)
+    with col2:
+        # Adjust time filter options based on aggregation
+        if aggregation_type == "Diario":
+            time_options = ["Últimos 7 días", "Últimos 15 días", "Últimos 30 días", "Últimos 60 días", "Personalizado"]
+            default_option = "Últimos 30 días"
+        elif aggregation_type == "Semanal":
+            time_options = ["Últimas 4 semanas", "Últimas 8 semanas", "Últimas 12 semanas", "Últimas 26 semanas", "Personalizado"]
+            default_option = "Últimas 12 semanas"
+        else:  # Mensual
+            time_options = ["Últimos 3 meses", "Últimos 6 meses", "Último año", "Últimos 2 años", "Personalizado"]
+            default_option = "Últimos 6 meses"
+        
+        time_filter = st.selectbox(
+            "⏰ Período de análisis",
+            time_options,
+            index=time_options.index(default_option) if default_option in time_options else 0,
+            help=f"Rango de tiempo para mostrar datos {aggregation_type.lower()}s"
+        )
+    
+    # Apply time filtering based on selection and aggregation
+    if "Personalizado" in time_filter:
         with col3:
-            end_date = st.date_input("Fecha final", max_date, min_value=min_date, max_value=max_date)
+            start_date = st.date_input("📅 Fecha inicial", min_date, min_value=min_date, max_value=max_date)
+        with col4:
+            end_date = st.date_input("📅 Fecha final", max_date, min_value=min_date, max_value=max_date)
         
         if start_date <= end_date:
             filtered_raw = raw[(raw['date'] >= pd.Timestamp(start_date)) & (raw['date'] <= pd.Timestamp(end_date))]
@@ -154,14 +165,126 @@ if not raw.empty:
             st.error("La fecha inicial debe ser anterior a la fecha final")
             filtered_raw = raw
     else:
-        filtered_raw = raw
+        # Smart period calculation based on aggregation type
+        if aggregation_type == "Diario":
+            if "7 días" in time_filter:
+                cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(days=7)
+            elif "15 días" in time_filter:
+                cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(days=15)
+            elif "30 días" in time_filter:
+                cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(days=30)
+            elif "60 días" in time_filter:
+                cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(days=60)
+            else:
+                cutoff_date = pd.Timestamp(min_date)
+                
+        elif aggregation_type == "Semanal":
+            if "4 semanas" in time_filter:
+                cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(weeks=4)
+            elif "8 semanas" in time_filter:
+                cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(weeks=8)
+            elif "12 semanas" in time_filter:
+                cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(weeks=12)
+            elif "26 semanas" in time_filter:
+                cutoff_date = pd.Timestamp(max_date) - pd.Timedelta(weeks=26)
+            else:
+                cutoff_date = pd.Timestamp(min_date)
+                
+        else:  # Mensual
+            if "3 meses" in time_filter:
+                cutoff_date = pd.Timestamp(max_date) - pd.DateOffset(months=3)
+            elif "6 meses" in time_filter:
+                cutoff_date = pd.Timestamp(max_date) - pd.DateOffset(months=6)
+            elif "año" in time_filter:
+                cutoff_date = pd.Timestamp(max_date) - pd.DateOffset(months=12)
+            elif "2 años" in time_filter:
+                cutoff_date = pd.Timestamp(max_date) - pd.DateOffset(months=24)
+            else:
+                cutoff_date = pd.Timestamp(min_date)
+        
+        filtered_raw = raw[raw['date'] >= cutoff_date]
     
-    # Display filtered period info
+    # Apply data aggregation based on type
     if not filtered_raw.empty:
-        period_start = filtered_raw['date'].min().strftime('%d/%m/%Y')
-        period_end = filtered_raw['date'].max().strftime('%d/%m/%Y')
-        total_records = len(filtered_raw)
-        st.info(f"📅 **Período seleccionado**: {period_start} a {period_end} ({total_records} registros)")
+        # Set date as index for resampling
+        temp_df = filtered_raw.copy()
+        temp_df.set_index('date', inplace=True)
+        
+        if aggregation_type == "Diario":
+            # Daily data - no aggregation needed, just ensure daily frequency
+            aggregated_raw = temp_df.resample('D').agg({
+                'price': 'mean',
+                'store': 'first',
+                'sku': 'first', 
+                'name': 'first',
+                'division': 'first',
+                'province': 'first',
+                'source': 'first',
+                'price_sources': 'first',
+                'num_sources': 'sum',
+                'price_min': 'min',
+                'price_max': 'max',
+                'price_std': 'mean',
+                'reliability_weight': 'mean'
+            }).dropna()
+            
+        elif aggregation_type == "Semanal":
+            # Weekly aggregation (Monday to Sunday)
+            aggregated_raw = temp_df.resample('W-MON').agg({
+                'price': 'mean',
+                'store': 'first',
+                'sku': 'first',
+                'name': 'first', 
+                'division': 'first',
+                'province': 'first',
+                'source': 'first',
+                'price_sources': 'first',
+                'num_sources': 'sum',
+                'price_min': 'min',
+                'price_max': 'max',
+                'price_std': 'mean',
+                'reliability_weight': 'mean'
+            }).dropna()
+            
+        else:  # Mensual
+            # Monthly aggregation
+            aggregated_raw = temp_df.resample('M').agg({
+                'price': 'mean',
+                'store': 'first',
+                'sku': 'first',
+                'name': 'first',
+                'division': 'first', 
+                'province': 'first',
+                'source': 'first',
+                'price_sources': 'first',
+                'num_sources': 'sum',
+                'price_min': 'min',
+                'price_max': 'max',
+                'price_std': 'mean',
+                'reliability_weight': 'mean'
+            }).dropna()
+        
+        # Reset index to have date as column again
+        filtered_raw = aggregated_raw.reset_index()
+        
+        # Display aggregated period info
+        if not filtered_raw.empty:
+            period_start = filtered_raw['date'].min().strftime('%d/%m/%Y')
+            period_end = filtered_raw['date'].max().strftime('%d/%m/%Y')
+            total_records = len(filtered_raw)
+            
+            # Smart period description
+            if aggregation_type == "Diario":
+                period_desc = f"datos diarios"
+            elif aggregation_type == "Semanal":
+                period_desc = f"promedios semanales"
+            else:
+                period_desc = f"promedios mensuales"
+                
+            st.success(f"📊 **{aggregation_type}**: {period_start} a {period_end} ({total_records} {period_desc})")
+        else:
+            st.warning("⚠️ No hay datos suficientes para el período y agregación seleccionados")
+            filtered_raw = raw  # Fallback to all data
     else:
         st.warning("⚠️ No hay datos en el período seleccionado")
         filtered_raw = raw  # Fallback to all data
@@ -183,7 +306,7 @@ st.altair_chart(
            y="index:Q",
            tooltip=["date:T", "index:Q"],
        ),
-    use_container_width=True,
+    width='stretch',
 )
 
 st.subheader("Divisiones IPC")
@@ -201,7 +324,7 @@ st.altair_chart(
            color="division:N",
            tooltip=["division:N", "price:Q", "date:T"],
        ),
-    use_container_width=True,
+    width='stretch',
 )
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -228,7 +351,7 @@ if not filtered_raw.empty:
                    tooltip=["store:N", "price:Q", "date:T"],
                )
                .interactive(),
-            use_container_width=True,
+            width='stretch',
         )
         
         # Summary statistics by store
@@ -242,7 +365,7 @@ if not filtered_raw.empty:
         store_stats.columns = ['Precio Promedio', 'Precio Mínimo', 'Precio Máximo', 'Productos']
         
         st.write("**Estadísticas por tienda:**")
-        st.dataframe(store_stats, use_container_width=True)
+        st.dataframe(store_stats, width='stretch')
 
 # ─────────────────────────────────────────────────────────────────────────
 #   Análisis de Fuentes de Datos y Calidad
@@ -298,7 +421,7 @@ try:
             st.success("🎯 Sistema funcionando óptimamente - Todas las fuentes operativas")
         elif overall_health == "degraded":
             st.warning("⚠️ Sistema funcionando con degradación - Algunas fuentes con problemas")
-        else:
+    else:
                 st.info("🎭 **Modo Demostración Activo**: Los scrapers web están temporalmente inactivos debido a cambios en los sitios de destino. El sistema utiliza datos sintéticos realistas para demostrar funcionalidad completa.")
         
 except Exception as e:
@@ -347,15 +470,15 @@ try:
                 "price_sources": "Fuentes",
                 "reliability": "Confiabilidad"
             }),
-            use_container_width=True
+            width='stretch'
         )
         
         # Visualization of price consensus
         if len(display_df) > 0:
             chart = (
                 alt.Chart(display_df)
-                .mark_bar()
-                .encode(
+        .mark_bar()
+        .encode(
                     x=alt.X("name:N", title="Producto", sort="-y"),
                     y=alt.Y("price:Q", title="Precio Consenso ($)"),
                     color=alt.Color("num_sources:O", 
@@ -364,9 +487,9 @@ try:
                     tooltip=["name:N", "price:Q", "num_sources:O", "price_sources:N"]
                 )
                 .properties(title="Precios de Consenso por Producto")
-            )
-            st.altair_chart(chart, use_container_width=True)
-    else:
+    )
+    st.altair_chart(chart, width='stretch')
+else:
         st.info("No se encontraron productos con múltiples fuentes en los datos recientes")
         
 except Exception as e:
