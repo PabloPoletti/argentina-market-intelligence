@@ -278,28 +278,13 @@ if not raw.empty:
         temp_df.set_index('date', inplace=True)
         
         if aggregation_type == "Diario":
-            # Daily data - no aggregation needed, just ensure daily frequency
-            aggregated_raw = temp_df.resample('D').agg({
-                'price': 'mean',
-                'store': 'first',
-                'sku': 'first', 
-                'name': 'first',
-                'division': 'first',
-                'province': 'first',
-                'source': 'first',
-                'price_sources': 'first',
-                'num_sources': 'sum',
-                'price_min': 'min',
-                'price_max': 'max',
-                'price_std': 'mean',
-                'reliability_weight': 'mean'
-            }).dropna()
+            # Daily data - no aggregation needed, preserve all stores
+            aggregated_raw = filtered_raw.copy()
             
         elif aggregation_type == "Semanal":
-            # Weekly aggregation (Monday to Sunday)
-            aggregated_raw = temp_df.resample('W-MON').agg({
+            # Weekly aggregation - group by store and week to preserve all stores
+            aggregated_raw = temp_df.groupby(['store', pd.Grouper(freq='W-MON')]).agg({
                 'price': 'mean',
-                'store': 'first',
                 'sku': 'first',
                 'name': 'first', 
                 'division': 'first',
@@ -311,13 +296,12 @@ if not raw.empty:
                 'price_max': 'max',
                 'price_std': 'mean',
                 'reliability_weight': 'mean'
-            }).dropna()
+            }).reset_index().dropna()
             
         else:  # Mensual
-            # Monthly aggregation (ME = Month End, replaces deprecated 'M')
-            aggregated_raw = temp_df.resample('ME').agg({
+            # Monthly aggregation - group by store and month to preserve all stores
+            aggregated_raw = temp_df.groupby(['store', pd.Grouper(freq='ME')]).agg({
                 'price': 'mean',
-                'store': 'first',
                 'sku': 'first',
                 'name': 'first',
                 'division': 'first', 
@@ -329,7 +313,7 @@ if not raw.empty:
                 'price_max': 'max',
                 'price_std': 'mean',
                 'reliability_weight': 'mean'
-            }).dropna()
+            }).reset_index().dropna()
         
         # Reset index to have date as column again
         filtered_raw = aggregated_raw.reset_index()
