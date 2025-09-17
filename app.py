@@ -113,7 +113,7 @@ with st.sidebar:
     if st.button("🔄 Actualizar precios ahora"):
         with st.spinner("🌐 Recolectando datos reales..."):
             try:
-        update_all_sources(str(DB_PATH))
+                update_all_sources(str(DB_PATH))
                 st.success("✅ ¡Datos reales actualizados!")
                 st.balloons()
                 time.sleep(2)
@@ -525,8 +525,8 @@ try:
         if len(display_df) > 0:
             chart = (
                 alt.Chart(display_df)
-        .mark_bar()
-        .encode(
+                .mark_bar()
+                .encode(
                     x=alt.X("name:N", title="Producto", sort="-y"),
                     y=alt.Y("price:Q", title="Precio Consenso ($)"),
                     color=alt.Color("num_sources:O", 
@@ -535,10 +535,10 @@ try:
                     tooltip=["name:N", "price:Q", "num_sources:O", "price_sources:N"]
                 )
                 .properties(title="Precios de Consenso por Producto")
-    )
-    st.altair_chart(chart, use_container_width=True)
-else:
-        st.info("No se encontraron productos con múltiples fuentes en los datos recientes")
+            )
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.info("No se encontraron productos con múltiples fuentes en los datos recientes")
         
 except Exception as e:
     st.warning(f"Error al cargar análisis de consenso: {e}")
