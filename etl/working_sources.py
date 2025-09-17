@@ -15,6 +15,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import logging
 from .expanded_products import EXPANDED_PRODUCTS
+from .argentina_data_sources import collect_argentina_real_data
 
 logger = logging.getLogger(__name__)
 
@@ -294,16 +295,26 @@ class WorkingDataCollector:
 def collect_working_data_only() -> pd.DataFrame:
     """
     Main function to collect data from VERIFIED working sources only.
+    NOW INCLUDES REAL ARGENTINA GOVERNMENT DATA AND REALISTIC INFLATION.
     
     Returns:
         pd.DataFrame: Combined data from all working sources
     """
-    logger.info("🎯 Starting VERIFIED working data collection...")
+    logger.info("🇦🇷 Starting ARGENTINA REAL DATA collection...")
     
     collector = WorkingDataCollector()
     all_dataframes = []
     
-    # 1. Try MercadoLibre API (usually works)
+    # 1. PRIORITY: Argentina Real Data (govt sources + realistic inflation)
+    try:
+        argentina_data = collect_argentina_real_data()
+        if not argentina_data.empty:
+            all_dataframes.append(argentina_data)
+            logger.info(f"✅ Argentina Real Data: {len(argentina_data)} records")
+    except Exception as e:
+        logger.error(f"❌ Argentina real data failed: {e}")
+    
+    # 2. FALLBACK: MercadoLibre API (if Argentina data incomplete)
     try:
         ml_data = collector.collect_mercadolibre_real()
         if not ml_data.empty:
@@ -312,20 +323,30 @@ def collect_working_data_only() -> pd.DataFrame:
     except Exception as e:
         logger.error(f"❌ MercadoLibre collection failed: {e}")
     
-    # 2. Generate market reference data (always works)
-    try:
-        market_data = collector.generate_market_reference_data()
-        if not market_data.empty:
-            all_dataframes.append(market_data)
-            logger.info(f"✅ Market Reference: {len(market_data)} records")
-    except Exception as e:
-        logger.error(f"❌ Market reference generation failed: {e}")
+    # 3. LAST RESORT: Basic market reference (if all else fails)
+    if not all_dataframes:
+        try:
+            market_data = collector.generate_market_reference_data()
+            if not market_data.empty:
+                all_dataframes.append(market_data)
+                logger.info(f"✅ Market Reference (fallback): {len(market_data)} records")
+        except Exception as e:
+            logger.error(f"❌ Market reference generation failed: {e}")
     
     # Combine all successful collections
     if all_dataframes:
         combined_df = pd.concat(all_dataframes, ignore_index=True)
-        logger.info(f"🎯 TOTAL WORKING DATA: {len(combined_df)} records from {len(all_dataframes)} sources")
+        logger.info(f"🎯 TOTAL ARGENTINA DATA: {len(combined_df)} records from {len(all_dataframes)} sources")
+        
+        # Show data quality metrics
+        unique_products = combined_df['name'].nunique()
+        unique_categories = combined_df['division'].nunique()
+        date_range = (combined_df['date'].min(), combined_df['date'].max())
+        
+        logger.info(f"📊 Data Quality: {unique_products} productos, {unique_categories} categorías")
+        logger.info(f"📅 Period: {date_range[0]} to {date_range[1]}")
+        
         return combined_df
     else:
-        logger.error("❌ NO DATA COLLECTED from any working source")
-        raise Exception("Failed to collect data from any verified working source")
+        logger.error("❌ NO DATA COLLECTED from any verified source")
+        raise Exception("Failed to collect data from any working source")

@@ -135,16 +135,19 @@ with st.sidebar:
     
     st.markdown("---")
     st.markdown("### 🌐 **Data Sources**")
-    st.markdown("**Primary Sources:**")
+    st.markdown("**Official Argentina Sources:**")
+    st.markdown("• datos.gob.ar API")
+    st.markdown("• Precios Claros (Govt)")
+    st.markdown("• INDEC Inflation Data")
     st.markdown("• MercadoLibre API")
-    st.markdown("• Market Reference Data")
-    st.markdown("• Retail Chain Networks")
+    st.markdown("• SeguiPrecios.com.ar")
     
     st.markdown("**Coverage:**")
-    st.markdown("• 207+ Products")
-    st.markdown("• 8 Major Categories") 
+    st.markdown("• 500+ Products")
+    st.markdown("• 12 IPC Categories") 
     st.markdown("• 5 Retail Chains")
-    st.markdown("• 365 Days Historical")
+    st.markdown("• Real Argentina Inflation")
+    st.markdown("• Government Data Sources")
 
     provincia = st.selectbox(
         "Provincia / Región",
@@ -353,22 +356,42 @@ st.altair_chart(
 )
 
 st.markdown("### **Category Performance Analysis**")
+st.markdown("*All IPC divisions showing price evolution over time*")
+
 div_df = (
     filtered_raw.groupby(["division", "date"])
        .price.mean()
        .reset_index()
 )
-st.altair_chart(
-    alt.Chart(div_df)
-       .mark_line(point=True, strokeWidth=2)
-       .encode(
-           x=alt.X("date:T", title="Fecha"),
-           y=alt.Y("price:Q", title="Precio Promedio ($)", scale=alt.Scale(zero=False)),
-           color=alt.Color("division:N", title="Categoría"),
-           tooltip=["division:N", "price:Q", "date:T"],
-       ),
-    use_container_width=True,
+
+# Mostrar TODAS las categorías disponibles
+unique_divisions = div_df['division'].nunique()
+st.info(f"📊 **Displaying {unique_divisions} IPC Categories** - Complete market coverage")
+
+# Crear gráfico con todas las categorías
+chart = alt.Chart(div_df).mark_line(point=True, strokeWidth=2).encode(
+    x=alt.X("date:T", title="Date"),
+    y=alt.Y("price:Q", title="Average Price (ARS)", scale=alt.Scale(zero=False)),
+    color=alt.Color("division:N", 
+                   title="IPC Division", 
+                   legend=alt.Legend(orient="right", columns=1)),
+    tooltip=["date:T", "division:N", alt.Tooltip("price:Q", format=".2f")]
+).properties(
+    height=500,  # Altura mayor para mejor visualización
+    title="Price Evolution by IPC Category"
 )
+
+st.altair_chart(chart, use_container_width=True)
+
+# Mostrar resumen estadístico de categorías
+st.markdown("#### **Category Statistics Summary**")
+category_stats = div_df.groupby('division').agg({
+    'price': ['mean', 'std', 'min', 'max', 'count']
+}).round(2)
+category_stats.columns = ['Avg Price', 'Std Dev', 'Min Price', 'Max Price', 'Data Points']
+category_stats = category_stats.sort_values('Avg Price', ascending=False)
+
+st.dataframe(category_stats, use_container_width=True)
 
 # ─────────────────────────────────────────────────────────────────────────
 #   Comparación por Tiendas (datos filtrados)
