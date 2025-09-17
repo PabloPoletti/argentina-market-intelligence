@@ -141,6 +141,17 @@ with st.sidebar:
 # ─────────────────────────────────────────────────────────────────────────
 raw = con.execute("SELECT * FROM prices WHERE source IN ('Market_Reference', 'MercadoLibre_API', 'working_sources')").fetch_df()
 
+# 🚨 EMERGENCY DEBUG: Show what's in the database
+st.write("🚨 **EMERGENCY DEBUG - Database Contents:**")
+all_data = con.execute("SELECT source, store, COUNT(*) as count FROM prices GROUP BY source, store ORDER BY source, store").fetch_df()
+st.dataframe(all_data, use_container_width=True)
+
+st.write("🚨 **EMERGENCY DEBUG - Filtered Data:**")
+st.write(f"Total raw data after filter: {len(raw)} records")
+if not raw.empty:
+    raw_summary = raw.groupby(['source', 'store']).size().reset_index(name='count')
+    st.dataframe(raw_summary, use_container_width=True)
+
 # Convert date column to datetime for filtering
 if not raw.empty:
     raw['date'] = pd.to_datetime(raw['date'])
