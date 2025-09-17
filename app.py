@@ -141,16 +141,7 @@ with st.sidebar:
 # ─────────────────────────────────────────────────────────────────────────
 raw = con.execute("SELECT * FROM prices WHERE source IN ('Market_Reference', 'MercadoLibre_API', 'working_sources')").fetch_df()
 
-# 🚨 EMERGENCY DEBUG: Show what's in the database
-st.write("🚨 **EMERGENCY DEBUG - Database Contents:**")
-all_data = con.execute("SELECT source, store, COUNT(*) as count FROM prices GROUP BY source, store ORDER BY source, store").fetch_df()
-st.dataframe(all_data, use_container_width=True)
-
-st.write("🚨 **EMERGENCY DEBUG - Filtered Data:**")
-st.write(f"Total raw data after filter: {len(raw)} records")
-if not raw.empty:
-    raw_summary = raw.groupby(['source', 'store']).size().reset_index(name='count')
-    st.dataframe(raw_summary, use_container_width=True)
+# Data loaded successfully
 
 # Convert date column to datetime for filtering
 if not raw.empty:
@@ -250,16 +241,7 @@ if not raw.empty:
             
             filtered_raw = raw[raw['date'] >= cutoff_date]
             
-            # 🚨 TEMPORAL DEBUG: Show what happens with date filtering
-            st.write(f"🚨 **TEMPORAL DEBUG - Date Filter:**")
-            st.write(f"• Cutoff date: {cutoff_date}")
-            st.write(f"• Raw data date range: {raw['date'].min()} to {raw['date'].max()}")
-            st.write(f"• Data before filter: {len(raw)} records")
-            st.write(f"• Data after filter: {len(filtered_raw)} records")
-            if not filtered_raw.empty:
-                temporal_summary = filtered_raw.groupby(['store']).size().reset_index(name='count')
-                st.write("**Stores after temporal filter:**")
-                st.dataframe(temporal_summary, use_container_width=True)
+            # Date filtering applied successfully
             
             # Validate that we have data for the selected period
             if filtered_raw.empty:
@@ -384,34 +366,20 @@ st.altair_chart(
 if not filtered_raw.empty:
     st.subheader("🏪 Comparación de Precios por Tienda")
     
-    # DEBUG: Show store distribution
-    store_counts = filtered_raw['store'].value_counts()
-    st.write("**🔍 DEBUG - Tiendas en datos filtrados:**")
-    for store, count in store_counts.items():
-        st.write(f"• {store}: {count} productos")
-    
-    # Group by store and date for comparison
-    store_df = (
-        filtered_raw.groupby(["store", "date"])
-                   .price.mean()
-                   .reset_index()
-    )
+    # Show ALL individual products (no grouping for detailed analysis)
+    store_df = filtered_raw.copy()
     
     if not store_df.empty:
-        # DEBUG: Show store data availability
-        store_dates = store_df['store'].value_counts()
-        st.write("**🔍 DEBUG - Tiendas en gráfico temporal:**")
-        for store, count in store_dates.items():
-            st.write(f"• {store}: {count} puntos de datos")
         
+        # Create scatter plot to show all individual products
         st.altair_chart(
             alt.Chart(store_df)
-               .mark_line(point=True)
+               .mark_circle(size=60, opacity=0.7)
                .encode(
                    x="date:T",
                    y="price:Q",
                    color="store:N",
-                   tooltip=["store:N", "price:Q", "date:T"],
+                   tooltip=["store:N", "name:N", "price:Q", "date:T"],
                )
                .interactive(),
             use_container_width=True,
@@ -531,8 +499,8 @@ try:
         if len(display_df) > 0:
             chart = (
                 alt.Chart(display_df)
-                .mark_bar()
-                .encode(
+        .mark_bar()
+        .encode(
                     x=alt.X("name:N", title="Producto", sort="-y"),
                     y=alt.Y("price:Q", title="Precio Consenso ($)"),
                     color=alt.Color("num_sources:O", 
@@ -541,7 +509,7 @@ try:
                     tooltip=["name:N", "price:Q", "num_sources:O", "price_sources:N"]
                 )
                 .properties(title="Precios de Consenso por Producto")
-            )
+    )
             st.altair_chart(chart, use_container_width=True)
         else:
             st.info("No se encontraron productos con múltiples fuentes en los datos recientes")
