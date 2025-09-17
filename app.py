@@ -52,9 +52,9 @@ try:
 except Exception as e:
     st.error(f"❌ Error en reinicio de base de datos: {e}")
     # Intentar actualización normal si falla el reinicio
-    tbls = con.execute("SHOW TABLES").fetchall()
-    if ("prices",) not in tbls:
-        update_all_sources(str(DB_PATH))
+tbls = con.execute("SHOW TABLES").fetchall()
+if ("prices",) not in tbls:
+    update_all_sources(str(DB_PATH))
 
 # ---------- C)  Streamlit UI --------------------------------------------
 st.title("Índice Diario de Precios al Consumidor (experimental)")
@@ -113,7 +113,7 @@ with st.sidebar:
     if st.button("🔄 Actualizar precios ahora"):
         with st.spinner("🌐 Recolectando datos reales..."):
             try:
-                update_all_sources(str(DB_PATH))
+        update_all_sources(str(DB_PATH))
                 st.success("✅ ¡Datos reales actualizados!")
                 st.balloons()
                 time.sleep(2)
@@ -378,6 +378,12 @@ st.altair_chart(
 if not filtered_raw.empty:
     st.subheader("🏪 Comparación de Precios por Tienda")
     
+    # DEBUG: Show store distribution
+    store_counts = filtered_raw['store'].value_counts()
+    st.write("**🔍 DEBUG - Tiendas en datos filtrados:**")
+    for store, count in store_counts.items():
+        st.write(f"• {store}: {count} productos")
+    
     # Group by store and date for comparison
     store_df = (
         filtered_raw.groupby(["store", "date"])
@@ -386,6 +392,12 @@ if not filtered_raw.empty:
     )
     
     if not store_df.empty:
+        # DEBUG: Show store data availability
+        store_dates = store_df['store'].value_counts()
+        st.write("**🔍 DEBUG - Tiendas en gráfico temporal:**")
+        for store, count in store_dates.items():
+            st.write(f"• {store}: {count} puntos de datos")
+        
         st.altair_chart(
             alt.Chart(store_df)
                .mark_line(point=True)
@@ -524,8 +536,8 @@ try:
                 )
                 .properties(title="Precios de Consenso por Producto")
     )
-        st.altair_chart(chart, use_container_width=True)
-    else:
+    st.altair_chart(chart, use_container_width=True)
+else:
         st.info("No se encontraron productos con múltiples fuentes en los datos recientes")
         
 except Exception as e:
