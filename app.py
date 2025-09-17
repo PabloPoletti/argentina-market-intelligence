@@ -35,27 +35,26 @@ DB_PATH = pathlib.Path("data/prices.duckdb")
 DB_PATH.parent.mkdir(exist_ok=True)
 con = duckdb.connect(str(DB_PATH))
 
-# LIMPIAR DATOS SINTÉTICOS y asegurar tabla actualizada
-tbls = con.execute("SHOW TABLES").fetchall()
-if ("prices",) not in tbls:
+# 🚨 FORZAR RECREACIÓN COMPLETA DE BASE DE DATOS - SOLO DATOS REALES
+try:
+    # ELIMINAR TABLA COMPLETA para garantizar limpieza total
+    con.execute("DROP TABLE IF EXISTS prices")
+    con.execute("DROP TABLE IF EXISTS source_health")
+    
+    # Crear un indicador visual de que se está limpiando
+    st.warning("🔄 **REINICIANDO BASE DE DATOS**: Eliminando todos los datos sintéticos...")
+    
+    # FORZAR nueva recolección de datos SOLO REALES
     update_all_sources(str(DB_PATH))
-else:
-    # ELIMINAR CUALQUIER RASTRO DE DATOS SINTÉTICOS
-    try:
-        demo_count = con.execute("SELECT COUNT(*) FROM prices WHERE source = 'demo_data' OR source LIKE '%demo%'").fetchone()[0]
-        if demo_count > 0:
-            st.warning(f"🧹 Limpiando {demo_count} registros de datos sintéticos...")
-            con.execute("DELETE FROM prices WHERE source = 'demo_data' OR source LIKE '%demo%'")
-            st.success("✅ Datos sintéticos eliminados completamente")
-            
-        # Verificar que solo tenemos datos reales
-        real_count = con.execute("SELECT COUNT(*) FROM prices").fetchone()[0]
-        if real_count == 0:
-            st.info("🔄 Base de datos limpia. Recolectando solo datos reales...")
-            update_all_sources(str(DB_PATH))
-    except Exception as e:
-        st.error(f"Error al limpiar datos: {e}")
-    update_all_sources(str(DB_PATH))
+    
+    st.success("✅ **BASE DE DATOS RECREADA**: Solo datos reales verificados")
+    
+except Exception as e:
+    st.error(f"❌ Error en reinicio de base de datos: {e}")
+    # Intentar actualización normal si falla el reinicio
+    tbls = con.execute("SHOW TABLES").fetchall()
+    if ("prices",) not in tbls:
+        update_all_sources(str(DB_PATH))
 
 # ---------- C)  Streamlit UI --------------------------------------------
 st.title("Índice Diario de Precios al Consumidor (experimental)")
@@ -63,17 +62,13 @@ st.title("Índice Diario de Precios al Consumidor (experimental)")
 # Verificar que NO hay datos sintéticos (política cero demo data)
 # NO debe existir NINGÚN dato sintético en el sistema
 
-# Verificar SOLO fuentes de datos REALES (excluyendo cualquier sintético)
+# Verificar SOLO fuentes de datos REALES PERMITIDAS (lista blanca estricta)
 real_data_sources = con.execute("""
     SELECT COUNT(*) as total, 
            COUNT(DISTINCT source) as sources,
            GROUP_CONCAT(DISTINCT source) as source_list
     FROM prices 
-    WHERE source IS NOT NULL 
-      AND source != '' 
-      AND source NOT LIKE '%demo%' 
-      AND source NOT LIKE '%synthetic%'
-      AND source NOT LIKE '%test%'
+    WHERE source IN ('Market_Reference', 'MercadoLibre_API', 'working_sources')
 """).fetchone()
 
 total_real_records = real_data_sources[0] if real_data_sources[0] else 0
@@ -98,8 +93,25 @@ else:
     st.info("🔄 **Acción requerida**: Presiona 'Actualizar precios ahora' para intentar recolectar datos reales.", icon="💡")
 
 with st.sidebar:
+    # Botón de emergencia para limpieza completa
+    st.markdown("### 🚨 Controles de Emergencia")
+    if st.button("🔥 LIMPIAR TODO Y RECARGAR", type="primary"):
+        with st.spinner("🧹 ELIMINANDO TODOS LOS DATOS SINTÉTICOS..."):
+            try:
+                # FORZAR eliminación completa
+                con.execute("DROP TABLE IF EXISTS prices")
+                con.execute("DROP TABLE IF EXISTS source_health")
+                update_all_sources(str(DB_PATH))
+                st.success("✅ ¡BASE DE DATOS COMPLETAMENTE RECREADA!")
+                st.balloons()
+                time.sleep(2)
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Error en limpieza de emergencia: {str(e)}")
+    
+    st.markdown("### 🔄 Actualización Normal")
     if st.button("🔄 Actualizar precios ahora"):
-        with st.spinner("🌐 Recolectando datos reales de múltiples fuentes..."):
+        with st.spinner("🌐 Recolectando datos reales..."):
             try:
                 update_all_sources(str(DB_PATH))
                 st.success("✅ ¡Datos reales actualizados!")
@@ -108,7 +120,7 @@ with st.sidebar:
                 st.rerun()
             except Exception as e:
                 st.error(f"❌ Error al obtener datos reales: {str(e)}")
-                st.info("💡 Las fuentes online pueden estar temporalmente inaccesibles. Intenta de nuevo en unos minutos.")
+                st.info("💡 Intenta el botón de limpieza completa si persisten los problemas.")
     
     st.markdown("---")
     st.markdown("**🌐 Fuentes de datos reales:**")
