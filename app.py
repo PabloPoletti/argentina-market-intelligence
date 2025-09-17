@@ -113,7 +113,7 @@ with st.sidebar:
     if st.button("🔄 Actualizar precios ahora"):
         with st.spinner("🌐 Recolectando datos reales..."):
             try:
-        update_all_sources(str(DB_PATH))
+                update_all_sources(str(DB_PATH))
                 st.success("✅ ¡Datos reales actualizados!")
                 st.balloons()
                 time.sleep(2)
@@ -375,7 +375,7 @@ if not filtered_raw.empty:
                 title="Distribución de Precios por Tienda (Boxplot)",
                 height=400
             )
-    else:
+        else:
             # For aggregated data, show trends with confidence intervals
             base = alt.Chart(filtered_raw)
             
@@ -609,11 +609,11 @@ try:
                     tooltip=["name:N", "price:Q", "num_sources:O", "price_sources:N"]
                 )
                 .properties(title="Precios de Consenso por Producto")
-    )
-    st.altair_chart(chart, use_container_width=True)
-else:
+            .properties(title="Precios de Consenso por Producto")
+            )
+            st.altair_chart(chart, use_container_width=True)
+        else:
             st.info("No se encontraron productos con múltiples fuentes en los datos recientes")
-        
 except Exception as e:
     st.warning(f"Error al cargar análisis de consenso: {e}")
 
