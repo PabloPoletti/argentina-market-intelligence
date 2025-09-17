@@ -247,11 +247,22 @@ pip install -r requirements-dev.txt
 
 ---
 
-## 📞 **Support**
+## 👥 **Autor**
 
-- **📧 Email**: support@argentina-market-intelligence.com
-- **🐛 Issues**: [GitHub Issues](https://github.com/your-username/argentina-market-intelligence/issues)
-- **💬 Discussions**: [GitHub Discussions](https://github.com/your-username/argentina-market-intelligence/discussions)
+- **Pablo Poletti** - *Desarrollo inicial* - [@PabloPoletti](https://github.com/PabloPoletti)
+
+## 🔗 **Proyectos Relacionados**
+
+- **[Argentina Economic Dashboard](https://github.com/PabloPoletti/argentina-economic-dashboard)** - Dashboard de series económicas ([🚀 En Vivo](https://argentina-economic-dashboard.streamlit.app/))
+- **[SeriesEcon Original](https://github.com/PabloPoletti/seriesecon)** - Versión original del dashboard económico
+- **[Esperanza de Vida](https://github.com/PabloPoletti/esperanza-vida-2)** - Análisis demográfico y esperanza de vida ([🚀 En Vivo](https://life-expectancy-dashboard.streamlit.app/))
+
+## 📞 **Contacto**
+
+- **📧 Email**: lic.poletti@gmail.com
+- **💼 LinkedIn**: [Pablo Poletti](https://www.linkedin.com/in/pablom-poletti/)
+- **🐛 Issues**: [GitHub Issues](https://github.com/PabloPoletti/Precios1/issues)
+- **💬 GitHub**: [@PabloPoletti](https://github.com/PabloPoletti)
 
 ---
 
