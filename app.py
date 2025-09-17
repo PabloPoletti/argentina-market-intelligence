@@ -250,6 +250,17 @@ if not raw.empty:
             
             filtered_raw = raw[raw['date'] >= cutoff_date]
             
+            # 🚨 TEMPORAL DEBUG: Show what happens with date filtering
+            st.write(f"🚨 **TEMPORAL DEBUG - Date Filter:**")
+            st.write(f"• Cutoff date: {cutoff_date}")
+            st.write(f"• Raw data date range: {raw['date'].min()} to {raw['date'].max()}")
+            st.write(f"• Data before filter: {len(raw)} records")
+            st.write(f"• Data after filter: {len(filtered_raw)} records")
+            if not filtered_raw.empty:
+                temporal_summary = filtered_raw.groupby(['store']).size().reset_index(name='count')
+                st.write("**Stores after temporal filter:**")
+                st.dataframe(temporal_summary, use_container_width=True)
+            
             # Validate that we have data for the selected period
             if filtered_raw.empty:
                 st.warning(f"⚠️ No hay datos disponibles para el período seleccionado ({time_filter})")
