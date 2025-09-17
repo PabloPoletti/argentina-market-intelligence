@@ -128,19 +128,19 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Data directories
+# Project specific
 data/
+*.db
+*.sqlite
 *.duckdb
-*.duckdb.wal
+logs/
+temp/
+tmp/
+.streamlit/
+.vscode/
+.idea/
 
-# Streamlit
-.streamlit/secrets.toml
-
-# Playwright
-playwright-report/
-test-results/
-
-# OS generated files
+# OS specific
 .DS_Store
 .DS_Store?
 ._*
@@ -149,17 +149,9 @@ test-results/
 ehthumbs.db
 Thumbs.db
 
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
+# Backup files
 *~
-
-# Logs
-logs/
-*.log
-
-# Cache files
-.cache/
-cache/
+*.bak
+*.backup
+*_old.*
+*_backup.*
