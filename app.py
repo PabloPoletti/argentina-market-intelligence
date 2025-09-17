@@ -113,7 +113,7 @@ with st.sidebar:
     if st.button("🔄 Actualizar precios ahora"):
         with st.spinner("🌐 Recolectando datos reales..."):
             try:
-                update_all_sources(str(DB_PATH))
+        update_all_sources(str(DB_PATH))
                 st.success("✅ ¡Datos reales actualizados!")
                 st.balloons()
                 time.sleep(2)
@@ -264,38 +264,30 @@ if not raw.empty:
             aggregated_raw = filtered_raw.copy()
             
         elif aggregation_type == "Semanal":
-            # Weekly aggregation - group by store and week to preserve all stores
-            aggregated_raw = temp_df.groupby(['store', pd.Grouper(freq='W-MON')]).agg({
-                'price': 'mean',
-                'sku': 'first',
-                'name': 'first', 
-                'division': 'first',
-                'province': 'first',
+            # Weekly aggregation - preserve product diversity for analysis
+            aggregated_raw = temp_df.groupby(['store', 'division', pd.Grouper(freq='W-MON')]).agg({
+                'price': ['mean', 'std', 'min', 'max', 'count'],
+                'name': lambda x: ', '.join(x.unique()[:3]) + f' (+{len(x.unique())-3} más)' if len(x.unique()) > 3 else ', '.join(x.unique()),
+                'sku': 'count',
                 'source': 'first',
-                'price_sources': 'first',
-                'num_sources': 'sum',
-                'price_min': 'min',
-                'price_max': 'max',
-                'price_std': 'mean',
                 'reliability_weight': 'mean'
-            }).reset_index().dropna()
+            }).reset_index()
+            # Flatten column names
+            aggregated_raw.columns = ['store', 'division', 'date', 'price', 'price_std', 'price_min', 'price_max', 'product_count', 'name', 'sku_count', 'source', 'reliability_weight']
+            aggregated_raw = aggregated_raw.dropna()
             
         else:  # Mensual
-            # Monthly aggregation - group by store and month to preserve all stores
-            aggregated_raw = temp_df.groupby(['store', pd.Grouper(freq='ME')]).agg({
-                'price': 'mean',
-                'sku': 'first',
-                'name': 'first',
-                'division': 'first', 
-                'province': 'first',
+            # Monthly aggregation - preserve product diversity for analysis
+            aggregated_raw = temp_df.groupby(['store', 'division', pd.Grouper(freq='ME')]).agg({
+                'price': ['mean', 'std', 'min', 'max', 'count'],
+                'name': lambda x: ', '.join(x.unique()[:3]) + f' (+{len(x.unique())-3} más)' if len(x.unique()) > 3 else ', '.join(x.unique()),
+                'sku': 'count',
                 'source': 'first',
-                'price_sources': 'first',
-                'num_sources': 'sum',
-                'price_min': 'min',
-                'price_max': 'max',
-                'price_std': 'mean',
                 'reliability_weight': 'mean'
-            }).reset_index().dropna()
+            }).reset_index()
+            # Flatten column names
+            aggregated_raw.columns = ['store', 'division', 'date', 'price', 'price_std', 'price_min', 'price_max', 'product_count', 'name', 'sku_count', 'source', 'reliability_weight']
+            aggregated_raw = aggregated_raw.dropna()
         
         # Reset index to have date as column again
         filtered_raw = aggregated_raw.reset_index()
@@ -364,26 +356,134 @@ st.altair_chart(
 #   Comparación por Tiendas (datos filtrados)
 # ─────────────────────────────────────────────────────────────────────────
 if not filtered_raw.empty:
-    st.subheader("🏪 Comparación de Precios por Tienda")
+    st.subheader("📊 Análisis Avanzado de Precios - Enfoque Analítico Senior")
     
-    # Show ALL individual products (no grouping for detailed analysis)
-    store_df = filtered_raw.copy()
+    # Professional analytics tabs
+    tab1, tab2, tab3, tab4 = st.tabs(["🏪 Comparación Tiendas", "📈 Análisis por Categorías", "🎯 Volatilidad & Outliers", "🔥 Heatmap de Precios"])
     
-    if not store_df.empty:
+    with tab1:
+        st.markdown("### 🏪 Comparación Estratégica por Tienda")
         
-        # Create scatter plot to show all individual products
-        st.altair_chart(
-            alt.Chart(store_df)
-               .mark_circle(size=60, opacity=0.7)
-               .encode(
-                   x="date:T",
-                   y="price:Q",
-                   color="store:N",
-                   tooltip=["store:N", "name:N", "price:Q", "date:T"],
-               )
-               .interactive(),
-            use_container_width=True,
-        )
+        if aggregation_type == "Diario":
+            # For daily data, show price distribution by store
+            chart = alt.Chart(filtered_raw).mark_boxplot(extent='min-max').encode(
+                x=alt.X('store:N', title='Tienda'),
+                y=alt.Y('price:Q', title='Precio ($)', scale=alt.Scale(zero=False)),
+                color=alt.Color('store:N', legend=None),
+                tooltip=['store:N', 'price:Q', 'division:N']
+            ).properties(
+                title="Distribución de Precios por Tienda (Boxplot)",
+                height=400
+            )
+    else:
+            # For aggregated data, show trends with confidence intervals
+            base = alt.Chart(filtered_raw)
+            
+            line = base.mark_line(point=True).encode(
+                x=alt.X('date:T', title='Fecha'),
+                y=alt.Y('price:Q', title='Precio Promedio ($)'),
+                color=alt.Color('store:N', title='Tienda'),
+                tooltip=['store:N', 'price:Q', 'date:T', 'product_count:Q']
+            )
+            
+            band = base.mark_area(opacity=0.3).encode(
+                x='date:T',
+                y=alt.Y('price_min:Q', title='Precio'),
+                y2='price_max:Q',
+                color=alt.Color('store:N', legend=None)
+            )
+            
+            chart = (band + line).resolve_scale(
+                color='independent'
+            ).properties(
+                title="Evolución de Precios con Bandas de Confianza",
+                height=400
+            )
+        
+        st.altair_chart(chart, use_container_width=True)
+    
+    with tab2:
+        st.markdown("### 📈 Análisis por Categorías de Productos")
+        
+        if 'division' in filtered_raw.columns:
+            # Category performance analysis
+            category_chart = alt.Chart(filtered_raw).mark_bar().encode(
+                x=alt.X('division:N', title='Categoría', sort='-y'),
+                y=alt.Y('mean(price):Q', title='Precio Promedio ($)'),
+                color=alt.Color('division:N', legend=None),
+                tooltip=['division:N', 'mean(price):Q', 'count():Q']
+            ).properties(
+                title="Precio Promedio por Categoría de Producto",
+                height=400
+            )
+            
+            st.altair_chart(category_chart, use_container_width=True)
+            
+            # Category trends over time
+            if aggregation_type != "Diario":
+                trend_chart = alt.Chart(filtered_raw).mark_line(point=True).encode(
+                    x=alt.X('date:T', title='Fecha'),
+                    y=alt.Y('price:Q', title='Precio ($)'),
+                    color=alt.Color('division:N', title='Categoría'),
+                    facet=alt.Facet('store:N', columns=3, title='Tienda'),
+                    tooltip=['division:N', 'store:N', 'price:Q', 'date:T']
+                ).properties(
+                    width=200,
+                    height=150,
+                    title="Tendencias por Categoría y Tienda"
+                )
+                
+                st.altair_chart(trend_chart, use_container_width=True)
+    
+    with tab3:
+        st.markdown("### 🎯 Análisis de Volatilidad y Detección de Outliers")
+        
+        if aggregation_type != "Diario" and 'price_std' in filtered_raw.columns:
+            # Volatility analysis
+            volatility_chart = alt.Chart(filtered_raw).mark_circle(size=100).encode(
+                x=alt.X('price:Q', title='Precio Promedio ($)'),
+                y=alt.Y('price_std:Q', title='Volatilidad (Desv. Estándar)'),
+                color=alt.Color('store:N', title='Tienda'),
+                size=alt.Size('product_count:Q', title='Cantidad Productos'),
+                tooltip=['store:N', 'division:N', 'price:Q', 'price_std:Q', 'product_count:Q']
+            ).properties(
+                title="Relación Precio vs Volatilidad por Tienda",
+                height=400
+            )
+            
+            st.altair_chart(volatility_chart, use_container_width=True)
+        
+        # Price outliers detection
+        if len(filtered_raw) > 10:
+            Q1 = filtered_raw['price'].quantile(0.25)
+            Q3 = filtered_raw['price'].quantile(0.75)
+            IQR = Q3 - Q1
+            outliers = filtered_raw[(filtered_raw['price'] < Q1 - 1.5*IQR) | (filtered_raw['price'] > Q3 + 1.5*IQR)]
+            
+            if not outliers.empty:
+                st.markdown(f"**🚨 Outliers Detectados: {len(outliers)} productos con precios anómalos**")
+                st.dataframe(outliers[['store', 'name', 'price', 'division']].head(10), use_container_width=True)
+    
+    with tab4:
+        st.markdown("### 🔥 Heatmap de Precios - Vista Estratégica")
+        
+        if 'division' in filtered_raw.columns and len(filtered_raw) > 5:
+            # Create heatmap data
+            heatmap_data = filtered_raw.groupby(['store', 'division'])['price'].mean().reset_index()
+            
+            heatmap = alt.Chart(heatmap_data).mark_rect().encode(
+                x=alt.X('store:N', title='Tienda'),
+                y=alt.Y('division:N', title='Categoría'),
+                color=alt.Color('price:Q', 
+                               title='Precio ($)',
+                               scale=alt.Scale(scheme='viridis')),
+                tooltip=['store:N', 'division:N', 'price:Q']
+            ).properties(
+                title="Mapa de Calor: Precios por Tienda y Categoría",
+                height=400
+            )
+            
+            st.altair_chart(heatmap, use_container_width=True)
         
         # Summary statistics by store
         store_stats = (
@@ -510,8 +610,8 @@ try:
                 )
                 .properties(title="Precios de Consenso por Producto")
     )
-            st.altair_chart(chart, use_container_width=True)
-        else:
+    st.altair_chart(chart, use_container_width=True)
+else:
             st.info("No se encontraron productos con múltiples fuentes en los datos recientes")
         
 except Exception as e:
