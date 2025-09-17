@@ -139,7 +139,7 @@ with st.sidebar:
 # ─────────────────────────────────────────────────────────────────────────
 #   Carga de datos y cálculo de índice simple (sin diferenciación provincial)
 # ─────────────────────────────────────────────────────────────────────────
-raw = con.execute("SELECT * FROM prices").fetch_df()
+raw = con.execute("SELECT * FROM prices WHERE source IN ('Market_Reference', 'MercadoLibre_API', 'working_sources')").fetch_df()
 
 # Convert date column to datetime for filtering
 if not raw.empty:
